@@ -364,12 +364,18 @@ DEFAULT_PROVIDER_CODE = "RWP"
 default_label = next((lbl for lbl in prov_labels
                       if lbl.split("—")[0].strip() == DEFAULT_PROVIDER_CODE), None)
 
-# Use remembered only if it exists AND isn't "(None)"; else prefer RWP.
-prov_label_rem = remembered("m_provider", None)
-if prov_label_rem and prov_label_rem != "(None)" and prov_label_rem in (["(None)"] + prov_labels):
+# Check if there's a shared provider selection from another page
+shared_provider = st.session_state.get("shared_provider_code", None)
+
+# Use shared provider if it exists in current options, else use remembered or default
+if shared_provider and any(lbl.split("—")[0].strip() == shared_provider for lbl in prov_labels):
+    # Find the label that matches the shared provider code
+    matching_label = next((lbl for lbl in prov_labels if lbl.split("—")[0].strip() == shared_provider), None)
+    index_default = (["(None)"] + prov_labels).index(matching_label) + 1 if matching_label else 0
+elif prov_label_rem and prov_label_rem != "(None)" and prov_label_rem in (["(None)"] + prov_labels):
     index_default = (["(None)"] + prov_labels).index(prov_label_rem)
 elif default_label:
-    index_default = (prov_labels.index(default_label) + 1)  # +1 because we prepend "(None)"
+    index_default = (prov_labels.index(default_label) + 1)
 else:
     index_default = 0
 
@@ -378,12 +384,15 @@ provider_label = st.sidebar.selectbox("Provider (optional)",
                                       index=index_default)
 provider_code = None if provider_label == "(None)" else provider_label.split("—")[0].strip()
 
-# Save remembered values
+# Save to both local memory and shared state
 if REMEMBER:
     st.session_state.update({
         "m_month": month, "m_domain": domain, "m_metric": metric,
         "m_region": region, "m_provider": provider_label
     })
+
+# Always save the provider code to shared state (for cross-page sync)
+st.session_state["shared_provider_code"] = provider_code
 
 # --------------------------- Header -------------------------------
 st.markdown(

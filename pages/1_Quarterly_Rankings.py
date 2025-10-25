@@ -338,13 +338,29 @@ df_qdmr = df_qdm if region_selected is None else df_qdm[df_qdm[REGION] == region
 # 5) Provider (optional; filtered by Quarter+Domain+Metric and Region if set)
 prov_opts_labels = provider_options(df_qdmr)
 default_provider_label = next((lbl for lbl in prov_opts_labels if extract_code_from_label(lbl) == DEFAULT_PROVIDER_CODE), None)
+
+# Check if there's a shared provider selection from another page
+shared_provider = st.session_state.get("shared_provider_code", None)
+
+# Determine the default index based on shared provider, or fall back to default
+if shared_provider and any(extract_code_from_label(lbl) == shared_provider for lbl in prov_opts_labels):
+    matching_label = next((lbl for lbl in prov_opts_labels if extract_code_from_label(lbl) == shared_provider), None)
+    default_index = prov_opts_labels.index(matching_label) + 1 if matching_label else 0
+elif default_provider_label:
+    default_index = prov_opts_labels.index(default_provider_label) + 1
+else:
+    default_index = 0
+
 provider_label = st.sidebar.selectbox(
     "Provider (optional)",
     options=["(None)"] + prov_opts_labels,
-    index=(0 if default_provider_label is None else (prov_opts_labels.index(default_provider_label) + 1)),
+    index=default_index,
     help="Selecting a provider highlights it and shows KPIs."
 )
 provider_code = None if provider_label == "(None)" else extract_code_from_label(provider_label)
+
+# Always save the provider code to shared state (for cross-page sync)
+st.session_state["shared_provider_code"] = provider_code
 
 
 ROOT_ASSETS  = Path(__file__).parents[1] / "assets"           # project root /assets
