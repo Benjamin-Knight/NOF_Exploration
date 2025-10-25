@@ -333,69 +333,6 @@ h2.kpi-heading{
 }
 
 
-/* -------- Weighted row (25% | 25% | 50%) -------- */
-.weights-row{ margin-top:0px; }
-
-/* a touch tighter than Streamlit's "small" gap */
-.weights-row > div[data-testid="column"]{ padding-right:8px; display:flex; }
-.weights-row > div[data-testid="column"]:last-child{ padding-right:0; }
-.weights-row > div[data-testid="column"] > div{ display:flex; flex:1 1 auto; }
-
-.weights-row > div[data-testid="column"]{
-  display: flex;
-  align-items: stretch;          /* same height across the row */
-}
-/* ===== Metric tiles (cA & cB) =====
-   Wrap each tile in <div class="weight-card"> ... st.container(border=True) ...
-   so this CSS touches ONLY these two tiles.
-*/
-.weights-row .weight-card{ display:flex; flex:1 1 auto; border-radius: 30px;}
-
-/* The bordered container inside the tiles */
-.weights-row .weight-card [data-testid="stVerticalBlockBorderWrapper"]{
-  background: var(--panel-bg);
-  border: 1.5px solid var(--panel-border);
-  border-radius: 30px;
-  padding: 12px 14px;
-  box-shadow: 0 1px 0 rgba(0,0,0,.03);
-  width: 100%;
-  display: flex;
-  align-items: center;           /* purely for content centring; does not affect top line */
-  margin: 0;                     /* just in case */
-}
-
-/* Remove the default space under Plotly charts */
-div[data-testid="stPlotlyChart"]{
-  margin-bottom: 0 !important;
-}
-
-.weights-row .weight-card [data-testid="stMetric"]{
-  margin: 0 !important;    /* remove extra inner spacing */
-}
-
-/* subtle interaction states */
-.weights-row .weight-card [data-testid="stVerticalBlockBorderWrapper"]:hover{
-  border-color: #9FD7D2;
-  box-shadow: 0 0 0 3px rgba(12,152,143,.07);
-}
-.weights-row .weight-card [data-testid="stVerticalBlockBorderWrapper"]:focus-within{
-  outline: none;
-  border-color: #0C988F;
-  box-shadow: 0 0 0 3px rgba(12,152,143,.15);
-}
-
-/* Ensure all three columns in the weights row are vertically aligned */
-.weights-row > div[data-testid="column"]{
-  display: flex;
-  align-items: stretch;  /* same height */
-}
-
-.weights-row > div[data-testid="column"] > div{
-  display: flex;
-  flex-direction: column;
-  justify-content: center;  /* vertically center the content */
-  width: 100%;
-}
 
 /* ===== Right-hand info panel (50%) =====
    Use: st.markdown("<div class='weight-panel'> ... </div>", unsafe_allow_html=True)
@@ -405,7 +342,7 @@ div[data-testid="stPlotlyChart"]{
 .weight-panel{
   background: var(--panel-bg);
   border: 1.5px solid var(--panel-border);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 12px 14px;
   box-shadow: 0 1px 0 rgba(0,0,0,.03);
   display: flex;
