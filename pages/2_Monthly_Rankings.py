@@ -90,12 +90,15 @@ COLS = [
 ]
 
 # --------------------- Data cleaning helpers ----------------------
-def to_int(x: str):
+def to_int_or_float(x: str):
+    """Convert to numeric, preserving decimals if present."""
     if pd.isna(x): 
         return float("nan")
     if not isinstance(x, str):
         x = str(x)
-    cleaned = re.sub(r"[^\d\-]", "", x)
+    # Replace comma decimal separator with period, remove other non-numeric chars except decimal point and minus
+    x = x.replace(",", ".")  # Handle European format
+    cleaned = re.sub(r"[^\d\.\-]", "", x)  # Keep digits, decimal point, and minus sign
     return pd.to_numeric(cleaned, errors="coerce")
 
 def to_float(x: str) -> float:
@@ -139,15 +142,24 @@ def load_monthly_csv(file_bytes: bytes) -> pd.DataFrame:
     df["Month_disp"] = df["Month_dt"].dt.strftime("%b-%y")  # e.g. Jan-25
 
     # Numeric columns
+    # Numeric columns - use to_int_or_float to preserve decimals
     for col in ["Numerator", "Denominator", "Rank", "Rank_Region", "Region_Size"]:
-        df[col] = df[col].apply(to_int)
+        df[col] = df[col].apply(to_int_or_float)
 
-    # Percent column as numeric percentage points (e.g., 76.8)
+    # FIXED: Percent column handling - convert per-row based on value range
     df["Percent"] = df["%_Value"].apply(to_float)
-    # If values look like ratios (≤ 1.0), convert to percent points
-    mx = pd.to_numeric(df["Percent"], errors="coerce").max()
-    if pd.notna(mx) and mx <= 1.0:
-        df["Percent"] = df["Percent"] * 100.0
+    
+    # Check each value individually: if it looks like a ratio (0-1), convert to percentage points
+    def convert_to_percentage(val):
+        if pd.isna(val):
+            return val
+        # If value is between 0 and 1 (exclusive of exactly 0 and 1), treat as ratio
+        if 0 < val <= 1.0:
+            return val * 100.0
+        # If value is already in percentage range or is 0, keep as-is
+        return val
+    
+    df["Percent"] = df["Percent"].apply(convert_to_percentage)
 
     return df
 
@@ -682,37 +694,21 @@ if region_for_compare is None and provider_code:
 # Scope = all providers in selected Month + Domain + Metric
 comp_scope = df_mdm.copy()
 
-# Helpers to compute weighted % and the Σ counts
-def _sum_counts(df_):
-    return float(df_["Numerator"].sum(skipna=True)), float(df_["Denominator"].sum(skipna=True))
+# Use the weighted_percentage function for calculations
+nat_pct = weighted_percentage(comp_scope)
 
-def _weighted_pct_from_counts(df_):
-    num, den = _sum_counts(df_)
-    if den == 0:
-        return float("nan")
-    return (num / den) * 100.0
-
-# National
-nat_num, nat_den = _sum_counts(comp_scope)
-nat_pct = _weighted_pct_from_counts(comp_scope)
-
-# Region
 if region_for_compare:
     reg_scope = comp_scope[comp_scope["Region"] == region_for_compare]
-    reg_num, reg_den = _sum_counts(reg_scope)
-    reg_pct = _weighted_pct_from_counts(reg_scope)
+    reg_pct = weighted_percentage(reg_scope)
 else:
-    reg_scope = None
-    reg_num = reg_den = None
     reg_pct = float("nan")
 
 # --- Weighted row: 25% | 25% | 50% (info panel), with equal heights
 st.markdown("<div class='weights-row'>", unsafe_allow_html=True)
 
-cA, cB, cC = st.columns([1, 1, 3], gap="small")   # <- smaller gap
+cA, cB, cC = st.columns([1, 1, 3], gap="small")
 
 with cA:
-    # wrapper so we can target only these two cards in CSS
     st.markdown("<div class='weight-card'>", unsafe_allow_html=True)
     with st.container(border=True):
         if region_for_compare:
@@ -736,42 +732,21 @@ with cB:
     st.markdown("</div>", unsafe_allow_html=True)
 
 with cC:
-    # Build the INFO panel (NOT metrics). Uses totals from the current Month+Domain+Metric scope.
-    # comp_scope = df_mdm (already filtered earlier to Month+Domain+Metric)
-
-    # Totals for Region
-    if region_for_compare:
-        reg_scope = comp_scope[comp_scope["Region"] == region_for_compare]
-        reg_num = int(reg_scope["Numerator"].sum())
-        reg_den = int(reg_scope["Denominator"].sum())
-        reg_pct_text = "—" if reg_den == 0 else f"{(reg_num/reg_den)*100:.1f}%"
-    else:
-        reg_num = reg_den = 0
-        reg_pct_text = "—"
-
-    # Totals for National
-    nat_num = int(comp_scope["Numerator"].sum())
-    nat_den = int(comp_scope["Denominator"].sum())
-    nat_pct_text = "—" if nat_den == 0 else f"{(nat_num/nat_den)*100:.1f}%"
-
-    with cC:
-        st.markdown("<div class='weight-card'>", unsafe_allow_html=True)
-        
-        weight_info_html = f"""
-        <div class="weight-panel">
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-                <span style="font-size: 1.1rem;">ℹ️</span>
-                <strong style="font-size: 0.95rem; color: var(--brand-teal);">Weighted % — how it is calculated</strong>
-            </div>
-            <p style="margin: 0; font-size: 0.92rem; line-height: 1.4; color: #374151;">
-                We use counts (not a simple average of provider percentages). Why weighted? Using counts gives more influence to higher-volume providers, so the overall rate reflects the activity mix.
-            </p>
+    st.markdown("<div class='weight-card'>", unsafe_allow_html=True)
+    
+    weight_info_html = f"""
+    <div class="weight-panel">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+            <span style="font-size: 1.1rem;">ℹ️</span>
+            <strong style="font-size: 0.95rem; color: var(--brand-teal);">Weighted % — how it is calculated</strong>
         </div>
-        """
-        
-        st.markdown(weight_info_html, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
+        <p style="margin: 0; font-size: 0.92rem; line-height: 1.4; color: #374151;">
+            We use counts (not a simple average of provider percentages). Why weighted? Using counts gives more influence to higher-volume providers, so the overall rate reflects the activity mix.
+        </p>
+    </div>
+    """
+    
+    st.markdown(weight_info_html, unsafe_allow_html=True)
 
 # ---------------------------- Table -------------------------------
 with st.expander("See filtered data as a table and download"):
