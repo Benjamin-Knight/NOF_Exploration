@@ -23,6 +23,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"       # <— add this
 )
 
+st.session_state.setdefault("remember_filters", True)
+REMEMBER = st.session_state.get("remember_filters", True)
+
 # ---- Global page CSS (inline; keeps sidebar; pulls content up) ----
 
 def use_ui_css():
@@ -340,7 +343,7 @@ prov_opts_labels = provider_options(df_qdmr)
 default_provider_label = next((lbl for lbl in prov_opts_labels if extract_code_from_label(lbl) == DEFAULT_PROVIDER_CODE), None)
 
 # Check if there's a shared provider selection from another page
-shared_provider = st.session_state.get("shared_provider_code", None)
+shared_provider = st.session_state.get("shared_provider_code", None) if REMEMBER else None
 
 # Determine the default index based on shared provider, or fall back to default
 if shared_provider and any(extract_code_from_label(lbl) == shared_provider for lbl in prov_opts_labels):
@@ -360,7 +363,9 @@ provider_label = st.sidebar.selectbox(
 provider_code = None if provider_label == "(None)" else extract_code_from_label(provider_label)
 
 # Always save the provider code to shared state (for cross-page sync)
-st.session_state["shared_provider_code"] = provider_code
+# Only update shared when a real provider is selected AND remember is ON
+if REMEMBER and provider_code:
+    st.session_state["shared_provider_code"] = provider_code
 
 
 ROOT_ASSETS  = Path(__file__).parents[1] / "assets"           # project root /assets

@@ -29,6 +29,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"       # <— add this
 )
 
+st.session_state.setdefault("remember_filters", True)
+REMEMBER = st.session_state.get("remember_filters", True)
+
 # ---- Global page CSS (inline; keeps sidebar; pulls content up) ----
 
 def use_ui_css():
@@ -364,18 +367,27 @@ DEFAULT_PROVIDER_CODE = "RWP"
 default_label = next((lbl for lbl in prov_labels
                       if lbl.split("—")[0].strip() == DEFAULT_PROVIDER_CODE), None)
 
-# Check if there's a shared provider selection from another page
-shared_provider = st.session_state.get("shared_provider_code", None)
+# NEW: read remembered local label safely (fixes undefined prov_label_rem)
+prov_label_rem = st.session_state.get("m_provider", "(None)")
 
-# Use shared provider if it exists in current options, else use remembered or default
+# Check if there's a shared provider selection from another page
+shared_provider = st.session_state.get("shared_provider_code", None) if REMEMBER else None
+
+# Compute the default index robustly:
+# - If a shared provider exists AND is available under current filters, use it.
+# - Else if a remembered local provider label is valid, use that.
+# - Else if the hard-coded default exists, use that.
+# - Else fall back to "(None)".
+# Work out the default index clearly and safely
 if shared_provider and any(lbl.split("—")[0].strip() == shared_provider for lbl in prov_labels):
     # Find the label that matches the shared provider code
-    matching_label = next((lbl for lbl in prov_labels if lbl.split("—")[0].strip() == shared_provider), None)
-    index_default = (["(None)"] + prov_labels).index(matching_label) + 1 if matching_label else 0
-elif prov_label_rem and prov_label_rem != "(None)" and prov_label_rem in (["(None)"] + prov_labels):
+    matching_label = next(lbl for lbl in prov_labels if lbl.split("—")[0].strip() == shared_provider)
+    # IMPORTANT: we're searching in ["(None)"] + prov_labels, so do NOT add +1 again
+    index_default = (["(None)"] + prov_labels).index(matching_label)
+elif prov_label_rem in (["(None)"] + prov_labels):
     index_default = (["(None)"] + prov_labels).index(prov_label_rem)
 elif default_label:
-    index_default = (prov_labels.index(default_label) + 1)
+    index_default = 1 + prov_labels.index(default_label)  # +1 for "(None)" at position 0
 else:
     index_default = 0
 
@@ -384,15 +396,17 @@ provider_label = st.sidebar.selectbox("Provider (optional)",
                                       index=index_default)
 provider_code = None if provider_label == "(None)" else provider_label.split("—")[0].strip()
 
-# Save to both local memory and shared state
+# Save local page memory (unchanged)
 if REMEMBER:
     st.session_state.update({
         "m_month": month, "m_domain": domain, "m_metric": metric,
         "m_region": region, "m_provider": provider_label
     })
 
-# Always save the provider code to shared state (for cross-page sync)
-st.session_state["shared_provider_code"] = provider_code
+# NEW: Only update the shared provider when a real provider is selected AND remember is ON.
+if REMEMBER and provider_code:
+    st.session_state["shared_provider_code"] = provider_code
+# If "(None)" is selected, do NOT clear the shared code; leave it as-is.
 
 # --------------------------- Header -------------------------------
 st.markdown(
