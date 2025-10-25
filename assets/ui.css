@@ -320,8 +320,21 @@ h2.kpi-heading{
   height: 0;
 }
 
+/* Chart card wrapper around the trend chart */
+.chart-wrap [data-testid="stVerticalBlockBorderWrapper"]{
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  /* reduce bottom padding so the card isn't “fat” under the legend */
+  padding: 12px 12px 4px;
+  /* reduce bottom margin so the next row sits tight */
+  margin: 6px 0 4px !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+}
+
+
 /* -------- Weighted row (25% | 25% | 50%) -------- */
-.weights-row{ margin-top:8px; }
+.weights-row{ margin-top:0px; }
 
 /* a touch tighter than Streamlit's "small" gap */
 .weights-row > div[data-testid="column"]{ padding-right:8px; display:flex; }
@@ -336,19 +349,24 @@ h2.kpi-heading{
    Wrap each tile in <div class="weight-card"> ... st.container(border=True) ...
    so this CSS touches ONLY these two tiles.
 */
-.weights-row .weight-card{ display:flex; flex:1 1 auto; }
+.weights-row .weight-card{ display:flex; flex:1 1 auto; border-radius: 30px;}
 
 /* The bordered container inside the tiles */
 .weights-row .weight-card [data-testid="stVerticalBlockBorderWrapper"]{
   background: var(--panel-bg);
   border: 1.5px solid var(--panel-border);
-  border-radius: 20px;
+  border-radius: 30px;
   padding: 12px 14px;
   box-shadow: 0 1px 0 rgba(0,0,0,.03);
   width: 100%;
   display: flex;
   align-items: center;           /* purely for content centring; does not affect top line */
   margin: 0;                     /* just in case */
+}
+
+/* Remove the default space under Plotly charts */
+div[data-testid="stPlotlyChart"]{
+  margin-bottom: 0 !important;
 }
 
 .weights-row .weight-card [data-testid="stMetric"]{

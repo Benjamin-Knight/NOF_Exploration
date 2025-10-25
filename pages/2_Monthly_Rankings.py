@@ -73,8 +73,6 @@ CARD_BG = "#F5FBFB"
 st.markdown("""
 <style>
 
-/* Tiny separator between KPI row and charts */
-.section-gap { height: 6px; }
 
 /* Small helper for muted text */
 .muted { color:#6B7280; }
@@ -576,7 +574,7 @@ months_sorted = (
     .drop_duplicates()
     .sort_values("Month_dt")
     .query("Month_dt <= @cutoff_dt")
-    .tail(9)["Month_dt"]
+    .tail(24)["Month_dt"]
     .tolist()
 )
 
@@ -647,11 +645,11 @@ fig_trend.update_layout(
         text=f"{(provider_code or '').strip()} % Value trend (last {len(trend)} months)".strip(),
         x=0, xanchor="left"
     ),
-    margin=dict(t=56, r=10, l=10, b=60),
-    legend=dict(orientation="h", y=-0.22, yanchor="top", x=-0.02, xanchor="left", xref="paper"),
+    margin=dict(t=56, r=10, l=10, b=0),  # Reduced bottom margin
+    legend=dict(orientation="h", y=-0.15, yanchor="top", x=-0.03, xanchor="left", xref="paper"),
     hovermode="x unified",
     template="plotly_white",  # Simple clean template
-    height=400
+    height=350
 )
 
 fig_trend.update_yaxes(
@@ -669,12 +667,7 @@ fig_trend.update_xaxes(
 
 # Add a thin separator line above the chart
 st.markdown('<hr class="chart-separator">', unsafe_allow_html=True)
-
 st.plotly_chart(fig_trend, use_container_width=True)
-
-# ------------------------------
-# st.markdown("<hr class='hr-thin'>", unsafe_allow_html=True)
-# ------------------------------
 
 
 # 3) Region vs National comparison (weighted)
