@@ -8,12 +8,13 @@
 
 import io
 import re
+import math
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import html  # for safe HTML escaping of metric names
 from pathlib import Path
-
+from decimal import Decimal, ROUND_HALF_UP
 
 # ===================== Page & Styles =========================
 st.set_page_config(
@@ -69,6 +70,8 @@ st.markdown(
       .metric-title { font-size: 0.9rem; color: var(--kpi-title, #555); margin-bottom: 6px; }
       .metric-rank { font-size: 1.15rem; font-weight: 600; }
       .metric-sub { font-size: 0.8rem; color: var(--kpi-title, #666); }
+      
+      .muted { color: var(--kpi-title, #666); }
 
       /* Dark-mode friendly (auto via OS/browser) */
       @media (prefers-color-scheme: dark) {
@@ -93,27 +96,30 @@ COLS_ORIG = [
     "Quarter","Domain","Metric","Region",
     "Provider Code","Provider Name",
     "Numerator","Denominator","% Value","Rank",
+    "Rank_Region","Region_Size",
     "Months Covered","Covered Months"
 ]
+
 def underscore(x: str) -> str:
     x = x.replace("%","Percent")
     return re.sub(r"\s+","_",x)
+
 COLS_US = [underscore(c) for c in COLS_ORIG]
 RENAME_MAP = dict(zip(COLS_ORIG, COLS_US))
 
 (QUARTER, DOMAIN, METRIC, REGION,
  PROV_CODE, PROV_NAME,
  NUM, DEN, PCT_STR, RANK,
+ RANK_REGION, REGION_SIZE,
  MONTHS_COV, COVERED_MONTHS) = COLS_US
 
 HIGHLIGHT_HEX = "#FAE100"      # NHS yellow
 BAR_NEUTRAL_HEX = "#D5DAE1"    # light grey
 DEFAULT_PROVIDER_CODE = "RWP"
 
-# Domain order for the Domain select (your custom order)
 DOMAIN_ORDER = {"A&E": 0, "Cancer": 1, "RTT": 2, "Diagnostic": 3}
+RHS_PANEL_TITLE = "📋Metrics within domain"
 
-RHS_PANEL_TITLE = "📋Metrics within domain"  # change anytime
 
 # ===================== Helpers ===============================
 def clean_numeric_str_to_float(x: str):
@@ -129,23 +135,61 @@ def clean_numeric_str_to_int(x: str):
 @st.cache_data(show_spinner=False)
 def load_csv(file) -> pd.DataFrame:
     df = pd.read_csv(file, dtype=str)
+
+    # Mandatory columns
     missing = [c for c in COLS_ORIG if c not in df.columns]
     if missing:
         raise ValueError(f"CSV is missing required columns: {missing}")
+
     df = df[COLS_ORIG].rename(columns=RENAME_MAP).copy()
+
+    # Trim whitespace
     for c in df.columns:
         if df[c].dtype == "object":
             df[c] = df[c].astype(str).str.strip()
-    for c in [NUM, DEN, RANK, MONTHS_COV]:
-        df[c] = df[c].apply(clean_numeric_str_to_int)
-    df["Percent"] = df[PCT_STR].apply(clean_numeric_str_to_float)
+
+    # Numerator/Denominator may be decimals in file → keep as float internally
+    def _to_float(x):
+        return pd.to_numeric(re.sub(r"[^\d\.\-]", "", str(x).replace(",", ".")), errors="coerce")
+
+    df[NUM] = df[NUM].map(_to_float)
+    df[DEN] = df[DEN].map(_to_float)
+
+    # Integers
+    for c in [RANK, RANK_REGION, REGION_SIZE, MONTHS_COV]:
+        df[c] = pd.to_numeric(df[c].map(_to_float), errors="coerce").astype("Int64")
+
+    # Percent as float 0–100 (handles if file provided 0–1)
+    pct = pd.to_numeric(df[PCT_STR].map(_to_float), errors="coerce")
+    df["Percent"] = pct.where(pct > 1.0, pct * 100)
+
+    # Ordered categorical quarter
     df[QUARTER] = pd.Categorical(df[QUARTER], categories=pd.unique(df[QUARTER]), ordered=True)
     return df
+
 
 def format_percent_display(value: float, metric_name: str) -> str:
     if pd.isna(value): return "---"
     if str(metric_name).strip().lower() == "52+ weeks": return f"{value:.2f}%"
     return f"{value:.1f}%"
+
+def format_whole_round(x) -> str:
+    """Standard rounding (half up) to whole number with thousands separator; '—' if NaN."""
+    if pd.isna(x):
+        return "—"
+    try:
+        # Use Decimal for true half-up behaviour
+        q = Decimal(str(float(x))).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return f"{int(q):,}"
+    except Exception:
+        return "—"
+
+def format_region_rank(rank_val, size_val) -> str:
+    """e.g., '3 out of 9' or '—' if missing."""
+    if pd.isna(rank_val) or pd.isna(size_val):
+        return "—"
+    return f"{int(rank_val)} out of {int(size_val)}"
+
 
 def provider_options(df_filtered: pd.DataFrame) -> list:
     tmp = df_filtered[[PROV_CODE, PROV_NAME]].drop_duplicates().sort_values(PROV_CODE)
@@ -166,24 +210,31 @@ def make_download_bytes(df: pd.DataFrame, as_excel: bool = False) -> bytes:
     return df.to_csv(index=False).encode("utf-8")
 
 def build_chart_plotly(chart_df: pd.DataFrame, chart_title: str):
-    # Auto-scale if file used 0–1 ratios
-    if pd.notna(chart_df["Percent"].max()) and chart_df["Percent"].max() <= 1.0:
-        chart_df = chart_df.copy()
-        chart_df["Percent"] = chart_df["Percent"] * 100
-        chart_df["PercentLabel"] = chart_df.apply(lambda r: format_percent_display(r["Percent"], r[METRIC]), axis=1)
+    dfp = chart_df.copy()
 
-    colors = chart_df["Is_Selected"].map({True: HIGHLIGHT_HEX, False: BAR_NEUTRAL_HEX})
-    fig = px.bar(chart_df, x=PROV_CODE, y="Percent", title=chart_title)
+    # Auto-scale if file used 0–1 ratios (already handled in loader, but harmless here)
+    if pd.notna(dfp["Percent"].max()) and dfp["Percent"].max() <= 1.0:
+        dfp["Percent"] = dfp["Percent"] * 100
+
+    # Pre-format display fields
+    dfp["PercentLabel"] = dfp.apply(lambda r: format_percent_display(r["Percent"], r[METRIC]), axis=1)
+    dfp["NumLabel"] = dfp[NUM].map(format_whole_round)
+    dfp["DenLabel"] = dfp[DEN].map(format_whole_round)
+    dfp["RegionRankLabel"] = dfp.apply(lambda r: format_region_rank(r[RANK_REGION], r[REGION_SIZE]), axis=1)
+
+    colors = dfp["Is_Selected"].map({True: HIGHLIGHT_HEX, False: BAR_NEUTRAL_HEX})
+    fig = px.bar(dfp, x=PROV_CODE, y="Percent", title=chart_title)
     fig.update_traces(
         marker_color=colors,
-        customdata=chart_df[[PROV_CODE, PROV_NAME, REGION, NUM, DEN, "PercentLabel", RANK]].values,
+        customdata=dfp[[PROV_CODE, PROV_NAME, REGION, "NumLabel", "DenLabel", "PercentLabel", RANK, "RegionRankLabel"]].values,
         hovertemplate=(
             "<b>%{customdata[0]}</b> — %{customdata[1]}<br>"
             "Region: %{customdata[2]}<br>"
-            "Numerator: %{customdata[3]:,}<br>"
-            "Denominator: %{customdata[4]:,}<br>"
+            "Numerator: %{customdata[3]}<br>"
+            "Denominator: %{customdata[4]}<br>"
             "% Value: %{customdata[5]}<br>"
-            "Rank: %{customdata[6]:,}<extra></extra>"
+            "Rank: %{customdata[6]}<br>"
+            "Region rank: %{customdata[7]}<extra></extra>"
         ),
     )
     fig.update_layout(
@@ -208,8 +259,6 @@ def render_metric_rank_panel(
     selected_domain: str,
     panel_title: str = RHS_PANEL_TITLE,
 ):
-    """Right-hand sticky panel with rank for the selected provider across ALL metrics
-    in Quarter+Domain (Region ignored). Rendered as a single vertical column."""
     if not provider_code:
         st.markdown(
             (
@@ -230,12 +279,14 @@ def render_metric_rank_panel(
     for m in metrics_all:
         r = scope[(scope[METRIC] == m) & (scope[PROV_CODE] == provider_code)]
         if r.empty:
-            rank_disp = "---"
-            pct_disp = "---"
+            rank_disp = "—"
+            pct_disp  = "—"
+            reg_rank  = "—"
         else:
             rr = r.iloc[0]
             rank_disp = "—" if pd.isna(rr[RANK]) else f"{int(rr[RANK])}"
             pct_disp  = format_percent_display(rr["Percent"], rr[METRIC])
+            reg_rank  = format_region_rank(rr[RANK_REGION], rr[REGION_SIZE])
 
         rows.append(
             '<div class="metric-item">'
@@ -244,6 +295,7 @@ def render_metric_rank_panel(
             f'    <div class="metric-rank">{rank_disp}</div>'
             f'    <div class="metric-pct">{pct_disp}</div>'
             '  </div>'
+            f'  <div class="metric-sub">{reg_rank}</div>'
             '</div>'
         )
 
@@ -253,7 +305,7 @@ def render_metric_rank_panel(
         + "".join(rows) +
         '</div>'
     )
-    st.markdown(panel_html, unsafe_allow_html=True)   # DO NOT use st.write or st.code
+    st.markdown(panel_html, unsafe_allow_html=True)
 
 
 def info_banner(msg: str):
@@ -287,7 +339,7 @@ with st.sidebar:
 
     if "quarterly_bytes" not in st.session_state:
         up = st.file_uploader(
-            "Upload the quarterly CSV (columns A–L).",
+            "Upload the quarterly CSV (columns A–N).",
             type=["csv"],
             key="quarterly_uploader",
             help="Upload once — it will persist while this app is open."
@@ -422,17 +474,25 @@ if provider_code:
     if not row.empty:
         r = row.iloc[0]
         rank_disp = "—" if pd.isna(r[RANK]) else f"{int(r[RANK]):,}"
-        num_disp  = "—" if pd.isna(r[NUM])  else f"{int(r[NUM]):,}"
-        den_disp  = "—" if pd.isna(r[DEN])  else f"{int(r[DEN]):,}"
-        pct_disp  = format_percent_display(r["Percent"], r[METRIC])
-        cov_disp  = r[COVERED_MONTHS].strip() if isinstance(r[COVERED_MONTHS], str) and r[COVERED_MONTHS].strip() else "—"
 
-        c1, c2, c3, c4, c5 = st.columns(5)
+        # Region rank parts: bold number + grey "out of N"
+        region_rank_label = "—" if pd.isna(r[RANK_REGION]) else f"{int(r[RANK_REGION])}"
+        region_rank_tail  = ""  if pd.isna(r[REGION_SIZE]) else f"<span class='muted'> out of {int(r[REGION_SIZE])}</span>"
+        region_rank_html  = f"{region_rank_label}{region_rank_tail}"
+
+        num_disp = format_whole_round(r[NUM])
+        den_disp = format_whole_round(r[DEN])
+        pct_disp = format_percent_display(r['Percent'], r[METRIC])
+        cov_disp = r[COVERED_MONTHS].strip() if isinstance(r[COVERED_MONTHS], str) and r[COVERED_MONTHS].strip() else "—"
+
+        # Order: Rank → Region Rank → Numerator → Denominator → % Value → Covered_Months
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         with c1: kpi_card("Rank", rank_disp)
-        with c2: kpi_card("Numerator", num_disp)
-        with c3: kpi_card("Denominator", den_disp)
-        with c4: kpi_card("% Value", pct_disp)
-        with c5: kpi_card("Covered_Months", cov_disp)
+        with c2: kpi_card("Region Rank", region_rank_html)     # <-- now grey tail
+        with c3: kpi_card("Numerator", num_disp)
+        with c4: kpi_card("Denominator", den_disp)
+        with c5: kpi_card("% Value", pct_disp)
+        with c6: kpi_card("Covered_Months", cov_disp)
     else:
         st.warning("No data for the selected provider under the current Metric/Region.")
 
@@ -466,21 +526,41 @@ with right:
 
 # ===================== Table (full width) =====================
 with st.expander("See filtered data as a table and download"):
-    # Only the 12 A–L columns (underscored)
-    table_cols = [QUARTER, DOMAIN, METRIC, REGION, PROV_CODE, PROV_NAME, NUM, DEN, PCT_STR, RANK, MONTHS_COV, COVERED_MONTHS]
+    table_cols = [
+        QUARTER, DOMAIN, METRIC, REGION,
+        PROV_CODE, PROV_NAME,
+        NUM, DEN, PCT_STR, RANK,
+        RANK_REGION, REGION_SIZE,
+        MONTHS_COV, COVERED_MONTHS
+    ]
     table_df = df_qdmr[table_cols].copy()
+
+    # Display formats
+    table_df[NUM] = table_df[NUM].map(format_whole_round)
+    table_df[DEN] = table_df[DEN].map(format_whole_round)
     table_df[PCT_STR] = [format_percent_display(p, m) for p, m in zip(df_qdmr["Percent"], df_qdmr[METRIC])]
+    # RANK/RANK_REGION/REGION_SIZE are Int64; display as plain ints/— automatically in dataframe
+
     st.dataframe(table_df, hide_index=True, use_container_width=True)
 
     col1, col2 = st.columns(2)
     with col1:
-        st.download_button("Download CSV", data=make_download_bytes(table_df, False),
-                           file_name="filtered_data.csv", mime="text/csv", use_container_width=True)
+        st.download_button(
+            "Download CSV",
+            data=make_download_bytes(table_df, False),
+            file_name="filtered_data.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
     with col2:
-        st.download_button("Download Excel", data=make_download_bytes(table_df, True),
-                           file_name="filtered_data.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           use_container_width=True)
+        st.download_button(
+            "Download Excel",
+            data=make_download_bytes(table_df, True),
+            file_name="filtered_data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
 
 # ===================== Notes ================================
 st.markdown(
