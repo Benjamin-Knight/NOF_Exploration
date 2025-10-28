@@ -23,8 +23,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"       # <— add this
 )
 
+# Home owns this flag. Pages must not set a default.
 st.session_state.setdefault("remember_filters", True)
 REMEMBER = st.session_state.get("remember_filters", True)
+
 
 # ---- Global page CSS (inline; keeps sidebar; pulls content up) ----
 

@@ -29,6 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"       # <— add this
 )
 
+# Home owns this flag. Pages must not set a default.
 st.session_state.setdefault("remember_filters", True)
 REMEMBER = st.session_state.get("remember_filters", True)
 
@@ -590,28 +591,39 @@ with right:
         st.markdown(panel_html, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)  # close .rhs-sticky
 
-# 2) 12-month trend for the selected provider
-# Decide which region line to show:
-# - If user picked a Region, use that;
-# - Else, if a provider is selected, use the provider’s region for context;
-# - Else, no region line.
-region_for_compare = region_selected if region_selected and region_selected != "(All Regions)" else None
-if region_for_compare is None and provider_code:
-    _row = df_mdmr.loc[df_mdmr["Provider_Code"] == provider_code]
-    if not _row.empty:
-        region_for_compare = _row.iloc[0]["Region"]
-
-# Choose the 9-month window ending at the selected month
-cutoff_dt = _month_map.get(month)  # from earlier: Month_disp -> Month_dt
+# 2) 24-month trend that IGNORES the Month slicer
+# Always use the full Domain+Metric slice (not month-filtered)
 domain_metric = df[(df["Domain"] == domain) & (df["Metric"] == metric)].copy()
-months_sorted = (
+
+# If Month_dt isn't datetime yet, make it so (safe no-op if already dt)
+if not pd.api.types.is_datetime64_any_dtype(domain_metric["Month_dt"]):
+    domain_metric["Month_dt"] = pd.to_datetime(domain_metric["Month_dt"])
+
+# Decide which region line to show (avoid month-filtered frames here):
+# - If user picked a Region, use it
+# - Else, if a provider is selected, use that provider's *most recent* Region
+# - Else, no region line
+if region_selected and region_selected != "(All Regions)":
+    region_for_compare = region_selected
+elif provider_code:
+    prov_rows = domain_metric.loc[domain_metric["Provider_Code"] == provider_code]
+    if not prov_rows.empty:
+        # use the region from the provider's most recent record in this Domain+Metric
+        region_for_compare = prov_rows.sort_values("Month_dt")["Region"].iloc[-1]
+    else:
+        region_for_compare = None
+else:
+    region_for_compare = None
+
+# Always pick the last 24 unique months up to the *latest* month in the data
+latest_dt = domain_metric["Month_dt"].max()
+uniq_months = (
     domain_metric[["Month_dt"]]
     .drop_duplicates()
-    .sort_values("Month_dt")
-    .query("Month_dt <= @cutoff_dt")
-    .tail(24)["Month_dt"]
-    .tolist()
+    .sort_values("Month_dt")["Month_dt"]
 )
+
+months_sorted = uniq_months[uniq_months <= latest_dt].tail(24).tolist()
 
 # Build series for Provider, Region weighted, National weighted
 trend_rows = []
@@ -642,7 +654,6 @@ for mdt in months_sorted:
     })
 
 trend = pd.DataFrame(trend_rows)
-# Nice x-axis labels
 trend["Month_lbl"] = trend["Month_dt"].dt.strftime("%b-%y")
 
 # --- Plotly figure with three lines (in a card) ---
@@ -675,9 +686,12 @@ if trend["National weighted"].notna().any():
         line=dict(width=2, dash="dot"), **trace_kwargs
     ))
 
+window_end = latest_dt.strftime("%b-%y") if pd.notnull(latest_dt) else ""
+months_n = len(trend)
+
 fig_trend.update_layout(
     title=dict(
-        text=f"{(provider_code or '').strip()} % Value trend (last {len(trend)} months)".strip(),
+        text=f"{(provider_code or '').strip()} % Value trend (last {months_n} months, to {window_end})".strip(),
         x=0, xanchor="left"
     ),
     margin=dict(t=56, r=10, l=10, b=0),  # Reduced bottom margin
