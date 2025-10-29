@@ -431,7 +431,7 @@ st.markdown(f'<div id="context-banner">{context_html}</div>', unsafe_allow_html=
 # ===================== Provider heading ====================
 if provider_code:
     prov_name = provider_name_from_code(df_mdmr, provider_code)  # Month+Domain+Metric(+Region)
-    st.markdown(f"<h2 class='kpi-heading'>{provider_code} — {prov_name}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 class='kpi-heading'>{prov_name} ({provider_code})</h2>", unsafe_allow_html=True)
 else:
     st.info("Select a provider to see KPIs and trend.")
 

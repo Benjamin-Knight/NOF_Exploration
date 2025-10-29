@@ -11,6 +11,7 @@ import re
 import math
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 import plotly.express as px
 import html  # for safe HTML escaping of metric names
 from pathlib import Path
@@ -84,6 +85,18 @@ st.markdown(
       
     /* -------- small vertical gap utilities -------- */
     .vgap-3 { height: 3px; }
+    
+    /* Summary panel sized to match the 420px chart height */
+    .summary-card{
+    border: 1px solid var(--kpi-border, #e6e6e6);
+    border-radius: 14px;
+    background: var(--kpi-bg, #fff);
+    padding: 16px 18px;
+    min-height: 420px;          /* match chart height */
+    display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .summary-card p{ margin: 0 0 12px 0; line-height: 1.55; font-size: 0.98rem; }
+    .summary-title{ font-weight: 600; font-size: 1.05rem; margin-bottom: 8px; }
     
     </style>
     """,
@@ -332,6 +345,346 @@ def provider_name_from_code(df_scope, code: str) -> str:
     s = df_scope.loc[df_scope["Provider_Code"] == code, "Provider_Name"].dropna()
     return s.iloc[0] if len(s) else ""
 
+# -----------------------------------------------
+
+def round_half_up_to_int(x):
+    if pd.isna(x): return None
+    try:
+        return int(Decimal(str(float(x))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return None
+
+def format_int_round(x) -> str:
+    v = round_half_up_to_int(x)
+    return "—" if v is None else f"{v:,}"
+
+def weighted_percent(df_scope: pd.DataFrame) -> float | None:
+    """Return 100 * sum(NUM) / sum(DEN) (NaN if not possible)."""
+    num = pd.to_numeric(df_scope[NUM], errors="coerce").sum(min_count=1)
+    den = pd.to_numeric(df_scope[DEN], errors="coerce").sum(min_count=1)
+    if pd.isna(num) or pd.isna(den) or den == 0: return float("nan")
+    return (num / den) * 100.0
+
+def build_quarter_trend_df(df: pd.DataFrame,
+                           provider_code: str | None,
+                           selected_domain: str,
+                           selected_metric: str,
+                           region_selected: str | None) -> pd.DataFrame:
+    """Returns per-quarter Percent for the current selection.
+       Provider selected → that provider; else region weighted; else national weighted."""
+    quarters = list(df[QUARTER].cat.categories)
+    if provider_code:  # provider trend
+        scope = df[(df[DOMAIN]==selected_domain) & (df[METRIC]==selected_metric) & (df[PROV_CODE]==provider_code)]
+        if region_selected is not None:
+            scope = scope[scope[REGION] == region_selected]
+        agg = (scope
+               .groupby(QUARTER, observed=True, sort=False)
+               .agg(Percent=("Percent", "mean"),   # display Percent as recorded (already 0–100)
+                    Numerator=(NUM, "sum"), Denominator=(DEN, "sum"))
+               .reindex(quarters))
+    elif region_selected is not None:  # region weighted
+        scope = df[(df[DOMAIN]==selected_domain) & (df[METRIC]==selected_metric) & (df[REGION]==region_selected)]
+        rows = []
+        for q in quarters:
+            qdf = scope[scope[QUARTER]==q]
+            rows.append((q, weighted_percent(qdf)))
+        agg = pd.DataFrame(rows, columns=[QUARTER, "Percent"]).set_index(QUARTER)
+    else:  # national weighted
+        scope = df[(df[DOMAIN]==selected_domain) & (df[METRIC]==selected_metric)]
+        rows = []
+        for q in quarters:
+            qdf = scope[scope[QUARTER]==q]
+            rows.append((q, weighted_percent(qdf)))
+        agg = pd.DataFrame(rows, columns=[QUARTER, "Percent"]).set_index(QUARTER)
+
+    agg = agg.reset_index()
+    # Display label with correct 1dp / 2dp rule
+    agg["PercentLabel"] = [format_percent_display(p, selected_metric) for p in agg["Percent"]]
+    return agg
+
+def make_summary_html(df: pd.DataFrame,
+                      df_all: pd.DataFrame,
+                      provider_code: str | None,
+                      quarter: str,
+                      domain: str,
+                      metric: str,
+                      region_selected: str | None) -> str:
+    """Return narrative HTML summary matching the current selection."""
+    
+    # Common counts
+    nat_scope_now = df_all[(df_all[QUARTER]==quarter) & (df_all[DOMAIN]==domain) & (df_all[METRIC]==metric)]
+    nat_n = nat_scope_now[PROV_CODE].nunique()
+
+    if provider_code:
+        row = df[(df[PROV_CODE]==provider_code)].iloc[0]
+        prov_name = provider_name_from_code(df, provider_code) or provider_code
+        
+        # Format current values
+        pct_disp = format_percent_display(row["Percent"], row[METRIC])
+        num_disp = format_int_round(row[NUM])
+        den_disp = format_int_round(row[DEN])
+        rank_val = int(row[RANK]) if pd.notna(row[RANK]) else None
+        reg_rank_val = int(row[RANK_REGION]) if pd.notna(row[RANK_REGION]) else None
+        reg_size_val = int(row[REGION_SIZE]) if pd.notna(row[REGION_SIZE]) else None
+        cov_disp = row[COVERED_MONTHS].strip() if isinstance(row[COVERED_MONTHS], str) and row[COVERED_MONTHS].strip() else "Jul, Aug, Sep"
+        
+        provider_region = (row[REGION] if isinstance(row.get(REGION, None), (str,)) and str(row[REGION]).strip()
+                           else (region_selected or ""))
+
+        # Calculate previous quarter changes
+        quarters = list(df_all[QUARTER].cat.categories)
+        try:
+            i = quarters.index(quarter)
+            prev_q = quarters[i-1] if i > 0 else None
+        except ValueError:
+            prev_q = None
+
+        perf_change_txt = ""
+        rank_change_txt = ""
+        
+        if prev_q:
+            prev = df_all[(df_all[PROV_CODE]==provider_code) & (df_all[DOMAIN]==domain) & 
+                         (df_all[METRIC]==metric) & (df_all[QUARTER]==prev_q)]
+            if not prev.empty:
+                p = prev.iloc[0]
+                # Performance delta
+                if pd.notna(row["Percent"]) and pd.notna(p["Percent"]):
+                    dpp = row["Percent"] - p["Percent"]
+                    if abs(dpp) >= 0.05:  # Only show if meaningful change
+                        direction = "improved" if dpp > 0 else "declined"
+                        perf_change_txt = f"Performance {direction} by {abs(dpp):.1f} percentage points compared to {prev_q}"
+                    else:
+                        perf_change_txt = f"Performance remained stable compared to {prev_q}"
+                
+                # Rank delta
+                if pd.notna(row[RANK]) and pd.notna(p[RANK]):
+                    dr = int(p[RANK]) - int(row[RANK])  # positive = improved
+                    if dr > 0:
+                        rank_change_txt = f", climbing {abs(dr)} position{'s' if abs(dr) > 1 else ''} in the national rankings"
+                    elif dr < 0:
+                        rank_change_txt = f", dropping {abs(dr)} position{'s' if abs(dr) > 1 else ''} in the national rankings"
+
+        # Calculate regional and national weighted averages for comparison
+        reg_scope = nat_scope_now[nat_scope_now[REGION] == provider_region] if provider_region else pd.DataFrame()
+        reg_avg = weighted_percent(reg_scope) if not reg_scope.empty else None
+        nat_avg = weighted_percent(nat_scope_now)
+        
+        # Comparison context
+        comparison_txt = ""
+        if pd.notna(row["Percent"]):
+            comparisons = []
+            if reg_avg and pd.notna(reg_avg):
+                diff_reg = row["Percent"] - reg_avg
+                if abs(diff_reg) >= 0.5:
+                    comp = "above" if diff_reg > 0 else "below"
+                    comparisons.append(f"{abs(diff_reg):.1f}pp {comp} the regional average of {format_percent_display(reg_avg, metric)}")
+            
+            if nat_avg and pd.notna(nat_avg):
+                diff_nat = row["Percent"] - nat_avg
+                if abs(diff_nat) >= 0.5:
+                    comp = "above" if diff_nat > 0 else "below"
+                    comparisons.append(f"{abs(diff_nat):.1f}pp {comp} the national average of {format_percent_display(nat_avg, metric)}")
+            
+            if comparisons:
+                comparison_txt = f" This is {' and '.join(comparisons)}."
+
+        # Build narrative paragraphs
+        p1 = (
+            f"<p><b>{prov_name}</b> achieved a <b>{pct_disp}</b> performance rate for "
+            f"<b>{domain} → {metric}</b> in <b>{quarter}</b> across the <b>{provider_region}</b> region. "
+            f"This placed them <b>{rank_val}{'th' if rank_val else ''} nationally</b> out of {nat_n} trusts"
+        )
+        
+        if reg_rank_val and reg_size_val:
+            p1 += f", and <b>{reg_rank_val}{'th' if reg_rank_val else ''} within their region</b> of {reg_size_val} trusts"
+        
+        p1 += f".{comparison_txt}</p>"
+
+        # Second paragraph: volume and data coverage
+        p2 = (
+            f"<p>The trust reported <b>{num_disp}</b> cases meeting the standard "
+            f"out of <b>{den_disp}</b> total cases during this quarter"
+        )
+        
+        if cov_disp and cov_disp != "—":
+            p2 += f", covering <b>{cov_disp}</b>"
+        
+        p2 += "."
+        
+        # Add change narrative if available
+        if perf_change_txt:
+            p2 += f" {perf_change_txt}{rank_change_txt}."
+        
+        p2 += "</p>"
+
+        # Third paragraph: chart guidance
+        p3 = (
+            "<p>The bar chart displays all trusts ranked by performance, with your selected trust "
+            "highlighted in yellow for easy identification. The trend chart below tracks quarterly "
+            "performance over time, showing the trust's trajectory (solid blue line) alongside "
+            "regional (dashed grey) and national (dotted teal) weighted averages for comparison.</p>"
+        )
+
+        return (
+            "<div class='metrics-panel summary-panel'>"
+            f"<div class='summary-title'>Summary</div>"
+            f"{p1}{p2}{p3}"
+            "</div>"
+        )
+
+    # Region summary (no provider selected)
+    if region_selected:
+        scope_now = nat_scope_now[nat_scope_now[REGION]==region_selected]
+        reg_n = scope_now[PROV_CODE].nunique()
+        reg_pct = weighted_percent(scope_now)
+        reg_pct_disp = format_percent_display(reg_pct, metric)
+        
+        # National average for comparison
+        nat_avg = weighted_percent(nat_scope_now)
+        
+        comparison_txt = ""
+        if reg_pct and nat_avg and pd.notna(reg_pct) and pd.notna(nat_avg):
+            diff = reg_pct - nat_avg
+            if abs(diff) >= 0.5:
+                comp = "above" if diff > 0 else "below"
+                comparison_txt = f" This is {abs(diff):.1f} percentage points {comp} the national weighted average of {format_percent_display(nat_avg, metric)}."
+        
+        # Previous quarter comparison
+        quarters = list(df_all[QUARTER].cat.categories)
+        try:
+            i = quarters.index(quarter)
+            prev_q = quarters[i-1] if i > 0 else None
+        except ValueError:
+            prev_q = None
+        
+        change_txt = ""
+        if prev_q:
+            prev_scope = df_all[(df_all[DOMAIN]==domain) & (df_all[METRIC]==metric) & 
+                               (df_all[REGION]==region_selected) & (df_all[QUARTER]==prev_q)]
+            prev_pct = weighted_percent(prev_scope)
+            if reg_pct and prev_pct and pd.notna(reg_pct) and pd.notna(prev_pct):
+                dpp = reg_pct - prev_pct
+                if abs(dpp) >= 0.05:
+                    direction = "improved" if dpp > 0 else "declined"
+                    change_txt = f" Regional performance {direction} by {abs(dpp):.1f} percentage points compared to {prev_q}."
+
+        p1 = (
+            f"<p>The <b>{region_selected}</b> region achieved a weighted average performance of "
+            f"<b>{reg_pct_disp}</b> for <b>{domain} → {metric}</b> in <b>{quarter}</b>. "
+            f"This regional view includes <b>{reg_n} trusts</b> out of <b>{nat_n}</b> trusts nationally."
+            f"{comparison_txt}{change_txt}</p>"
+        )
+        
+        p2 = (
+            "<p>The trend chart displays quarterly performance for the region (dashed grey line) "
+            "compared to the national weighted average (dotted teal line). Select a specific provider "
+            "from the dropdown above to see individual trust performance, rankings, and detailed KPIs.</p>"
+        )
+        
+        return (
+            "<div class='metrics-panel summary-panel'>"
+            f"<div class='summary-title'>Summary</div>"
+            f"{p1}{p2}"
+            "</div>"
+        )
+
+    # National summary (no provider or region selected)
+    nat_pct = weighted_percent(nat_scope_now)
+    nat_pct_disp = format_percent_display(nat_pct, metric)
+    
+    # Previous quarter comparison
+    quarters = list(df_all[QUARTER].cat.categories)
+    try:
+        i = quarters.index(quarter)
+        prev_q = quarters[i-1] if i > 0 else None
+    except ValueError:
+        prev_q = None
+    
+    change_txt = ""
+    if prev_q:
+        prev_scope = df_all[(df_all[DOMAIN]==domain) & (df_all[METRIC]==metric) & (df_all[QUARTER]==prev_q)]
+        prev_pct = weighted_percent(prev_scope)
+        if nat_pct and prev_pct and pd.notna(nat_pct) and pd.notna(prev_pct):
+            dpp = nat_pct - prev_pct
+            if abs(dpp) >= 0.05:
+                direction = "improved" if dpp > 0 else "declined"
+                change_txt = f" National performance {direction} by {abs(dpp):.1f} percentage points compared to {prev_q}."
+            else:
+                change_txt = f" National performance remained stable compared to {prev_q}."
+
+    p1 = (
+        f"<p>Across all regions in <b>{quarter}</b>, the national weighted average for "
+        f"<b>{domain} → {metric}</b> was <b>{nat_pct_disp}</b>, based on data from "
+        f"<b>{nat_n} trusts</b>.{change_txt}</p>"
+    )
+    
+    p2 = (
+        "<p>The trend chart shows quarterly performance at the national level (dotted teal line). "
+        "To explore regional variations or individual trust performance, select a region or provider "
+        "from the filters above. This will reveal detailed rankings, KPIs, and comparative insights.</p>"
+    )
+    
+    return (
+        "<div class='metrics-panel summary-panel'>"
+        f"<div class='summary-title'>Summary</div>"
+        f"{p1}{p2}"
+        "</div>"
+    )
+
+def resolve_region_for_compare(df: pd.DataFrame,
+                               domain: str,
+                               metric: str,
+                               provider_code: str | None,
+                               region_selected: str | None) -> str | None:
+    """Pick which region to use for the dashed comparison line.
+       Priority: explicit Region filter → provider's most-recent Region → None."""
+    if region_selected:
+        return region_selected
+    if provider_code:
+        scope = df[(df[DOMAIN] == domain) & (df[METRIC] == metric) & (df[PROV_CODE] == provider_code)]
+        if not scope.empty:
+            # QUARTER is an ordered categorical; sorting respects data order
+            latest_row = scope.sort_values(QUARTER).iloc[-1]
+            val = str(latest_row[REGION]).strip()
+            return val if val else None
+    return None
+
+def build_quarter_trend_lines_df(df: pd.DataFrame,
+                                 domain: str,
+                                 metric: str,
+                                 provider_code: str | None,
+                                 region_for_compare: str | None) -> pd.DataFrame:
+    """Return a dataframe with Provider, RegionWeighted, NationalWeighted by Quarter,
+       plus pre-formatted labels with your 1dp/2dp rule."""
+    quarters = list(df[QUARTER].cat.categories)
+    rows = []
+    for q in quarters:
+        qscope = df[(df[DOMAIN] == domain) & (df[METRIC] == metric) & (df[QUARTER] == q)]
+
+        # Provider % (as recorded 0–100)
+        if provider_code:
+            s = qscope.loc[qscope[PROV_CODE] == provider_code, "Percent"]
+            prov = float(s.iloc[0]) if len(s) else float("nan")
+        else:
+            prov = float("nan")
+
+        # Region weighted % from counts
+        reg = weighted_percent(qscope[qscope[REGION] == region_for_compare]) if region_for_compare else float("nan")
+
+        # National weighted % from counts
+        nat = weighted_percent(qscope)
+
+        rows.append({QUARTER: q, "Provider": prov, "RegionWeighted": reg, "NationalWeighted": nat})
+
+    trend = pd.DataFrame(rows)
+    # Pre-format labels with your display rule
+    trend["ProvLbl"] = [format_percent_display(v, metric) for v in trend["Provider"]]
+    trend["RegLbl"]  = [format_percent_display(v, metric) for v in trend["RegionWeighted"]]
+    trend["NatLbl"]  = [format_percent_display(v, metric) for v in trend["NationalWeighted"]]
+    return trend
+
+
+
 
 # ===================== Sidebar (Upload + Filters) =============
 with st.sidebar:
@@ -464,7 +817,7 @@ st.markdown(f'<div id="context-banner">{context_html}</div>', unsafe_allow_html=
 # ===================== Provider heading ====================
 if provider_code:
     prov_name = provider_name_from_code(df_qdmr, provider_code)
-    st.markdown(f"<h2 class='kpi-heading'>{provider_code} — {prov_name}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 class='kpi-heading'>{prov_name} ({provider_code})</h2>", unsafe_allow_html=True)
 else:
     st.info("Select a provider to see KPIs and trend.")
 
@@ -522,6 +875,78 @@ with right:
     st.markdown('<div class="rhs-sticky">', unsafe_allow_html=True)
     render_metric_rank_panel(df, provider_code, quarter, domain, panel_title=RHS_PANEL_TITLE)
     st.markdown('</div>', unsafe_allow_html=True)
+
+# -------- Trend + Summary row (keeps your earlier logic) --------
+st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
+t_left, t_right = st.columns([0.62, 0.38], gap="large")
+
+with t_left:
+    region_for_compare = resolve_region_for_compare(df, domain, metric, provider_code, region_selected)
+    trend = build_quarter_trend_lines_df(df, domain, metric, provider_code, region_for_compare)
+
+    fig_trend = go.Figure()
+    trace_kwargs = dict(mode="lines+markers", cliponaxis=False)
+
+    # Provider — solid blue, thicker
+    if trend["Provider"].notna().any():
+        fig_trend.add_trace(go.Scatter(
+            x=trend[QUARTER], y=trend["Provider"],
+            name=(provider_code or "Provider"),
+            line=dict(width=3, color="#327AD1"),   # solid blue
+            customdata=trend["ProvLbl"],
+            hovertemplate = "<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+            **trace_kwargs
+        ))
+
+    # Region (weighted) — dashed grey
+    if region_for_compare and trend["RegionWeighted"].notna().any():
+        fig_trend.add_trace(go.Scatter(
+            x=trend[QUARTER], y=trend["RegionWeighted"],
+            name=f"{region_for_compare} (weighted)",
+            line=dict(width=2, dash="dash", color="#6B7280"),
+            customdata=trend["RegLbl"],
+            hovertemplate = "<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+            **trace_kwargs
+        ))
+
+    # National (weighted) — dotted teal
+    if trend["NationalWeighted"].notna().any():
+        fig_trend.add_trace(go.Scatter(
+            x=trend[QUARTER], y=trend["NationalWeighted"],
+            name="National (weighted)",
+            line=dict(width=2, dash="dot", color="#0C988F"),
+            customdata=trend["NatLbl"],
+            hovertemplate = "<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+            **trace_kwargs
+        ))
+    
+    fig_trend.update_layout(
+        title=dict(text=f"{metric} — quarterly trend", x=0, xanchor="left"),
+        template="simple_white",
+        hovermode="x unified",
+        legend=dict(orientation="h", y=-0.10, yanchor="top", x=-0.03, xanchor="left"),
+        height=320,                               # keep in sync with summary min-height if you set one
+        margin=dict(l=10, r=10, t=50, b=6),
+        hoverlabel=dict(namelength=-1),
+    )
+    fig_trend.update_yaxes(title_text=None, ticksuffix="%", rangemode="tozero")
+    fig_trend.update_xaxes(title_text=None)
+    
+    TREND_H = 450
+    fig_trend.update_layout(autosize=False, height=TREND_H)
+
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+
+
+with t_right:
+    st.markdown("<div class='summary-offset'>", unsafe_allow_html=True)
+    html_summary = make_summary_html(
+        df_qdmr if provider_code else df,
+        df, provider_code, quarter, domain, metric, region_selected
+    )
+    st.markdown(html_summary, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ===================== Table (full width) =====================

@@ -309,6 +309,47 @@ h2.kpi-heading{
   font-weight: inherit;
 }
 
+/* More padding only for the Summary box */
+.metrics-panel.summary-panel{
+  padding:16px 20px 12px 20px;
+}
+
+/* ---------- Summary panel (shares look with metrics panel) ---------- */
+:root{
+  --summary-offset: 20px;   /* tweak to taste */
+  --summary-min-h: 280px;
+}
+
+/* Use padding on a wrapper to avoid margin-collapsing with Streamlit columns */
+@media (min-width: 900px){
+  .summary-offset{ padding-top: var(--summary-offset); }
+  /* neutralise any residual top margins inside */
+  .summary-offset .summary-panel{ margin-top: 0; }
+}
+
+.summary-panel{ min-height: var(--summary-min-h); }
+
+.summary-panel .summary-title{
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--brand-teal);
+  margin: 0 0 6px 0;         /* tighter title → paragraph gap */
+}
+.summary-panel p{
+  margin: 6px 0 12px;         /* tighten paragraphs */
+  line-height: 1.45;         /* match panel density */
+  font-size: .95rem;
+}
+.summary-panel p + p{ margin-top: 8px; }  /* small gap between the two paragraphs */
+
+/* Justify the summary paragraphs */
+.summary-panel p{
+  text-align: justify;
+  text-justify: inter-word;  /* better spacing for some browsers */
+  hyphens: auto;             /* optional: cleaner breaks on long words */
+}
+
+
 .hr-thin{ border:0; border-top:1px solid #E5E7EB; margin:8px 0 6px; }
 
 /* Thin separator with minimal spacing */

@@ -55,7 +55,7 @@ def _inject_css():
     :root{
       /* Description (subtitle) base size; page title is desc + 3px */
       --desc-size: 18px;
-      --greeting-size: 40px;
+      --greeting-size: 60px;
     }
 
     .page-wrap { max-width: 1200px; margin: 0 auto; }
@@ -88,14 +88,15 @@ def _inject_css():
     /* Greeting + date (tight vertical rhythm) */
     .greeting{
       font-size: var(--greeting-size);
-      font-weight: 400;
+      font-weight: 300;
       letter-spacing: -1px;
       line-height: 1.2;
       margin: 4px 0 2px 0;            /* tighter gap above & below */
-      color:#111827;
+      color:#585858;
     }
     .greeting-date{
-      font-size: 16px;
+      font-size: 18px;
+      font-weight: 600;
       color:#6B7280;
       margin: 0 0 8px 0;              /* minimal space under the date */
       line-height: 1.2;
@@ -127,8 +128,8 @@ def _inject_css():
 
     .stButton > button:hover,
     button[kind][data-baseweb="button"]:hover{
-      background: #E5E7EB !important;
-      border-color: #9CA3AF !important;
+      background: #EFF6FF !important;
+      border-color: #BFDBFE !important;
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
@@ -149,7 +150,7 @@ def _inject_css():
     .stButton > button span:first-child{
       font-size: 32px !important;
       font-weight: 300 !important;
-      margin-bottom: 8px !important;
+      margin-bottom: 12px !important;
       color: #1F2937 !important;
       opacity: 1 !important;
     }
