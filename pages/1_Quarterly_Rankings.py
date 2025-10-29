@@ -683,7 +683,60 @@ def build_quarter_trend_lines_df(df: pd.DataFrame,
     trend["NatLbl"]  = [format_percent_display(v, metric) for v in trend["NationalWeighted"]]
     return trend
 
+# ===== Empty state (when no CSV) =====
+def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: str | None = None):
+    # Top banner (kept)
+    st.markdown(
+        f'<div id="context-banner">👋 Upload a CSV in the sidebar to begin.</div>',
+        unsafe_allow_html=True
+    )
 
+    # Use the SAME padded wrapper as the banner so left/right edges align
+    st.markdown("<div class='info-row empty-grid'>", unsafe_allow_html=True)
+
+    left, right = st.columns(2, gap="medium")
+
+    # --- Left: quick start & template download ---
+    with left:
+        st.markdown("### Get started")
+        st.markdown(
+            "1. **Download the template** (headers only).  \n"
+            "2. **Fill the required columns** in your CSV.  \n"
+            "3. **Upload via the sidebar.**"
+        )
+
+        tpl = pd.DataFrame(columns=template_cols)
+        buf = io.BytesIO()
+        tpl.to_csv(buf, index=False)
+        st.download_button("⬇️ Download template CSV", buf.getvalue(),
+                           file_name=f"{page_name.lower()}_template.csv",
+                           use_container_width=True)
+
+        with st.expander("❓ FAQ & troubleshooting", expanded=False):
+            st.markdown(
+                "- **Missing columns?** File must include all headers shown on the right.  \n"
+                "- **% Value scale:** If your file uses 0–1, we auto-scale ×100.  \n"
+                "- **Large files:** Up to 200 MB. Remove blanks; keep only needed columns.  \n"
+                "- **Privacy:** Files are processed locally in this session."
+            )
+
+    # --- Right: the rounded “metrics panel” with two headings (no tabs) ---
+    with right:
+        panel_html = """
+        <div class="metrics-panel required-cols">
+        <div class="metrics-panel-title">Required columns</div>
+        <div class="panel-subtitle">Quarterly</div>
+        <div class="schema"><code>Quarter, Domain, Metric, Region, Provider Code, Provider Name, Numerator, Denominator, % Value, Rank, Rank_Region, Region_Size, Months Covered, Covered Months</code></div>
+        <div class="panel-subtitle">Monthly</div>
+        <div class="schema"><code>Month, Domain, Metric, Region, Provider Code, Provider Name, Numerator, Denominator, % Value, Rank, Rank_Region, Region_Size, Data_Date_Used</code></div>
+        </div>
+        """
+        st.markdown(panel_html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)  # close .info-row.empty-grid
+
+
+# ------------------------ End of def -----------------------------
 
 
 # ===================== Sidebar (Upload + Filters) =============
@@ -708,9 +761,19 @@ with st.sidebar:
             st.session_state.pop("quarterly_name",  None)
             st.rerun()
 
-# Stop if no file is active
+# If no file yet → show empty state and stop (Monthly)
 if "quarterly_bytes" not in st.session_state:
-    info_banner("👋 Upload a CSV in the sidebar to begin.")
+    render_empty_state(
+        page_name="Quarterly",
+        template_cols=[  # your quarterly headers
+            "Quarter","Domain","Metric","Region",
+            "Provider Code","Provider Name",
+            "Numerator","Denominator","% Value","Rank",
+            "Rank_Region","Region_Size",
+            "Months Covered","Covered Months"
+        ],
+        demo_rel_path=None  # or "assets/samples/Monthly_Rankings_sample.csv" if you add one
+    )
     st.stop()
 
 # ===================== Load Data ===============================
@@ -869,6 +932,17 @@ with left:
 
     chart_title = "Provider Performance (% Value) — ordered by Rank (1 at left)"
     fig = build_chart_plotly(chart_df_plot, chart_title)
+    # Remove the bottom x-axis line (and any grid/zero line)
+    fig.update_xaxes(
+        showline=False,     # turn off the axis baseline
+        linewidth=0,        # belt-and-braces
+        linecolor="rgba(0,0,0,0)",
+        showgrid=False,
+        zeroline=False,
+        ticks="",           # no tick marks
+        mirror=False
+    )
+
     st.plotly_chart(fig, use_container_width=True)
 
 with right:

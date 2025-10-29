@@ -109,8 +109,8 @@ def _inject_css():
       height: auto !important;
       padding: 28px 32px !important;
       border-radius: 15px !important;
-      border: 1px solid #D1D5DB !important;
-      background: #F3F4F6 !important;
+      border: 1px solid #BFDBFE !important;
+      background: #EFF6FF !important;
 
       /* left alignment & wrapping */
       display: flex !important;
@@ -128,8 +128,8 @@ def _inject_css():
 
     .stButton > button:hover,
     button[kind][data-baseweb="button"]:hover{
-      background: #EFF6FF !important;
-      border-color: #BFDBFE !important;
+      background: #F3F4F6 !important;
+      border-color: #D1D5DB !important;
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
@@ -139,7 +139,7 @@ def _inject_css():
     .stButton > button span{
       font-size: 16px;
       line-height: 24px;
-      opacity: 0.85;
+      opacity: 1.0;
       color: #4B5563;
       margin: 0 !important;
       text-align: left !important;

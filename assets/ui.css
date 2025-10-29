@@ -3,14 +3,16 @@
 
 /* ===== NOF shared UI ===== */
 :root{
-    
+  /* Layout */
   --logo-h: 42px;
   --pull-up: 65px;
   --page-top: 0rem;
-  --panel-top: 72px;        /* sticky offset for RHS panel */
+  --panel-top: 72px;              /* sticky offset for RHS panel */
+  --page-gutter: 16px;            /* << one knob for left/right page padding */
+  --banner-xpad: 12px;            /* inner left/right padding inside banners */
 
   /* Brand palette */
-  --brand-teal:   #0C988F;
+  --brand-teal:   #05857c;
   --brand-teal-2: #48B7AF;
   --brand-teal-3: #00A499;
 
@@ -27,6 +29,15 @@
   --metric-rank-fs: 18px;   /* 2px larger than % */
   --metric-pct-fs:  16px;
   --metric-sub-fs:  12px;
+
+  /* KPI delta pills */
+  --delta-good-bg: #DCFCE7;  --delta-good-fg: #166534;
+  --delta-bad-bg:  #FEE2E2;  --delta-bad-fg:  #991B1B;
+  --delta-neu-bg:  #F3F4F6;  --delta-neu-fg:  #374151;
+
+  /* Summary panel */
+  --summary-offset: 20px;
+  --summary-min-h: 280px;
 }
 
 /* Keep Streamlit header present (sidebar hamburger works) but neutral */
@@ -64,16 +75,10 @@ section.main > div.block-container{
   border: 1px solid var(--banner-border);
   color: var(--banner-text);
   border-radius: 12px;
-  padding: 10px 14px;
+  padding: 10px var(--banner-xpad);
   margin: 6px 0 8px;
   line-height: 1.55;
   font-size: .95rem;
-}
-
-/* Make the KPI heading sit close to the banner */
-#context-banner + h2,
-.info-banner + h2{
-  margin-top: 6px !important;   /* try 4–8px to taste */
 }
 
 #context-banner b{ color: inherit; }
@@ -86,30 +91,24 @@ section.main > div.block-container{
 /* ---------- Full-width info banner (shared) ---------- */
 
 /* left/right breathing room so the banner isn't clipped at the edges */
-.info-row { padding: 0 16px; margin-top: 6px; }
+.info-row { 
+  padding: 0 var(--page-gutter);
+  margin-top: 6px; 
+}
 
 /* support both pages: id (#context-banner) and class (.info-banner) */
 #context-banner,
 .info-banner{
-  background: #EFF6FF;
-  border: 1px solid #BFDBFE;
-  color: #1E3A8A;
-  padding: 10px 12px;
+  background: var(--banner-bg);
+  border: 1px solid var(--banner-border);
+  color: var(--banner-text);
+  padding: 10px var(--banner-xpad);
   border-radius: 8px;
-  width: 100%;          /* stay inside parent width */
-  margin: 16px 0;       /* vertical rhythm; no left margin that could clip */
+  width: 100%;
+  margin: 16px 0 2px;            /* small bottom gap to next heading */
   box-sizing: border-box;
   line-height: 1.55;
   font-size: .95rem;
-}
-
-/* optional: keep inline code readable inside the banner */
-#context-banner code,
-.info-banner code{
-  background: rgba(191,219,254,.25);
-  color: #1E3A8A;
-  border-radius: 4px;
-  padding: 0 .25rem;
 }
 
 /* context banner + KPI heading spacing */
@@ -117,26 +116,51 @@ section.main > div.block-container{
 .info-banner + h2,
 #context-banner + .kpi-heading,
 .info-banner + .kpi-heading{
-  margin-top: 3px !important;  /* adjust 4–8px to taste */
+  margin-top: 3px !important;     /* adjust 4–8px to taste */
 }
 
 /* Tighten the space between the banner and the KPI heading across Streamlit wrappers */
-
-/* Primary: when a stMarkdown block with the banner is followed by one with the heading */
 [data-testid="stMarkdown"]:has(#context-banner) + [data-testid="stMarkdown"] h2.kpi-heading,
 [data-testid="stMarkdown"]:has(.info-banner)    + [data-testid="stMarkdown"] h2.kpi-heading{
-  margin-top: 2px !important;  /* tweak 4–8px to taste */
+  margin-top: 2px !important;
+}
+h2.kpi-heading{ margin-top: 2px !important; }
+
+/* optional: keep inline code readable inside the banner */
+#context-banner code,
+.info-banner code{
+  background: rgba(191,219,254,.25);
+  color: var(--banner-text);
+  border-radius: 4px;
+  padding: 0 .25rem;
 }
 
-/* Fallback: in case :has() is unsupported, keep the heading inherently tight */
-h2.kpi-heading{
-  margin-top: 2px !important;   /* still helps even without the sibling match */
+/* ==== Empty-state grid: align columns with banner edges ==== */
+
+/* When the wrapper contains .empty-grid, remove wrapper padding... */
+.info-row.empty-grid { padding: 0 !important; }
+
+/* ...and give the SAME page gutter to the horizontal block */
+.info-row.empty-grid [data-testid="stHorizontalBlock"],
+.empty-grid [data-testid="stHorizontalBlock"]{
+  padding: 0 var(--page-gutter) !important;
 }
 
-/* Make sure the banner itself isn’t adding extra space underneath */
-#context-banner,
-.info-banner{
-  margin-bottom: 2px;           /* you can go to 6px if you want it tighter */
+/* 1) Remove the side padding on each Streamlit column */
+.empty-grid [data-testid="column"]{
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* 2) Remove padding from vertical blocks inside columns */
+.empty-grid [data-testid="stVerticalBlock"]{
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Optional: add a touch of inner padding to the left column body to mirror banner text inset */
+.empty-grid [data-testid="column"]:first-child > [data-testid="stVerticalBlock"] {
+  padding-left: var(--banner-xpad) !important;
 }
 
 /* ---------- KPI card (used on both pages) ---------- */
@@ -152,16 +176,6 @@ h2.kpi-heading{
 .kpi-delta.neu{  color:#6B7280; }
 
 /* ---------- KPI delta "pill" badges ---------- */
-:root{
-  /* tweak globally */
-  --delta-good-bg: #DCFCE7;  /* green-100  */
-  --delta-good-fg: #166534;  /* green-800  */
-  --delta-bad-bg:  #FEE2E2;  /* red-100    */
-  --delta-bad-fg:  #991B1B;  /* red-800    */
-  --delta-neu-bg:  #F3F4F6;  /* gray-100   */
-  --delta-neu-fg:  #374151;  /* gray-700   */
-}
-
 .kpi-delta{
   display: inline-flex;
   align-items: center;
@@ -174,47 +188,26 @@ h2.kpi-heading{
   line-height: 1;
   border: 1px solid transparent; /* keeps shape crisp on light/dark */
 }
-
-/* positive: ↑ green pill */
 .kpi-delta.good{
   color: var(--delta-good-fg);
   background: var(--delta-good-bg);
   border-color: rgba(22, 101, 52, 0.15);
 }
-.kpi-delta.good::before{
-  content: "↑";
-  font-weight: 700;
-}
-
-/* negative: ↓ red pill */
+.kpi-delta.good::before{ content: "↑"; font-weight: 700; }
 .kpi-delta.bad{
   color: var(--delta-bad-fg);
   background: var(--delta-bad-bg);
   border-color: rgba(153, 27, 27, 0.15);
 }
-.kpi-delta.bad::before{
-  content: "↓";
-  font-weight: 700;
-}
-
-/* neutral: grey pill (no arrow) */
+.kpi-delta.bad::before{ content: "↓"; font-weight: 700; }
 .kpi-delta.neu{
   color: var(--delta-neu-fg);
   background: var(--delta-neu-bg);
   border-color: rgba(55, 65, 81, 0.12);
 }
-
 .kpi-delta.neu::before{ content:"→"; font-weight:700; }
 
 /* ---------- Right-hand metrics panel (shared) ---------- */
-:root{
-  --panel-top: 72px;       /* sticky offset */
-  --metric-left-col: 72px; /* width of the left cell (rank block) */
-  --metric-rank-fs: 18px;  /* rank font (2px larger than % value) */
-  --metric-pct-fs:  16px;  /* % value font */
-  --metric-sub-fs:  12px;  /* "8 out of 20" line under rank */
-}
-
 .rhs-sticky{ position: sticky; top: var(--panel-top); }
 
 .metrics-panel{
@@ -223,203 +216,141 @@ h2.kpi-heading{
   border-radius:14px;
   padding:12px 12px 6px 12px;
 }
-
 .metrics-panel-title{
   font-size:1rem; font-weight:600; margin:0 0 8px 0;
   color: var(--brand-teal);
   display:flex; align-items:center; gap:6px;
 }
-
 /* Remove Streamlit wrapper spacing inside the panel */
 .metrics-panel [data-testid="stMarkdown"]{
-  margin: 0 !important;
-  padding: 0 !important;
+  margin: 0 !important; padding: 0 !important;
+}
+/* Sub-headings inside the panel */
+.metrics-panel .panel-subtitle{
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--brand-teal);
+  margin: 6px 0 4px;
+}
+/* Make the column-name lines look like neat mono "chips" and wrap nicely */
+.metrics-panel .schema code{
+  display: block;
+  white-space: break-spaces;          /* wrap but keep spacing after commas */
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: .92rem;
+  background: rgba(12,152,143,.06);
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-sizing: border-box;
 }
 
-/* Rows */
+/* Bigger, cushier panel just for the Required columns box */
+.metrics-panel.required-cols{
+  /* Prevent the box from feeling “short” — increase the base height */
+  min-height: 300px;                 /* tweak: 280–420px to taste */
+
+  /* Add more breathing room inside */
+  padding: 18px 20px 14px 20px;      /* was 12px 12px 6px 12px */
+}
+
+/* Slightly larger spacing between lines inside */
+.metrics-panel.required-cols .panel-subtitle{ margin: 10px 0 6px; }
+.metrics-panel.required-cols .schema code{ padding: 8px 10px; }
+
+/* === Re-tone ONLY the Required Columns panel to the blue banner palette === */
+.metrics-panel.required-cols{
+  background: var(--banner-bg);        /* blue background */
+  border-color: var(--banner-border);  /* blue border */
+}
+
+/* Title + section headings use banner text color */
+.metrics-panel.required-cols .metrics-panel-title,
+.metrics-panel.required-cols .panel-subtitle{
+  color: var(--banner-text);
+}
+
+/* “Schema chips” recolored to match banner styling */
+.metrics-panel.required-cols .schema code{
+  background: rgba(191,219,254,.25);   /* same tint used in #context-banner code */
+  border-color: var(--banner-border);
+  color: var(--banner-text);
+}
+
+/* Metric rows (kept for compatibility if you render lists later) */
 .metric-item{ padding:10px 4px; border-top:1px solid var(--panel-sep); }
 .metric-item:first-child{ border-top:none; }
 .metric-name{ font-size:.9rem; color: var(--brand-teal-2); margin-bottom:4px; }
-
-/* Grids:
-   - .metric-row.two  → 2 columns (left rank block + right %), used by Monthly
-   - .metric-row      → 3 columns (rank, region rank, %), kept for compatibility
-*/
-.metric-row{
-  display:grid;
-  grid-template-columns: var(--metric-left-col) 56px 1fr;
-  align-items:baseline;
-  column-gap:8px;
-}
-.metric-row.two{
-  grid-template-columns: var(--metric-left-col) 1fr;
-}
-
-/* Left rank block (can contain a second line) */
+.metric-row{ display:grid; grid-template-columns: var(--metric-left-col) 56px 1fr; align-items:baseline; column-gap:8px; }
+.metric-row.two{ grid-template-columns: var(--metric-left-col) 1fr; }
 .metric-rank{
-  font-weight:700;
-  font-size: var(--metric-rank-fs);
-  color: var(--brand-teal);
-  font-variant-numeric: tabular-nums;
-  line-height:1.05;
+  font-weight:700; font-size: var(--metric-rank-fs); color: var(--brand-teal);
+  font-variant-numeric: tabular-nums; line-height:1.05;
 }
-
-/* Second line under the rank: "8 out of 20" (or region rank) */
 .metric-sub{
-  margin-top:2px;
-  font-size: var(--metric-sub-fs);
-  line-height:1.15;
-  color:#6B7280;           /* muted grey */
-  font-weight:600;
-  white-space:nowrap;
+  margin-top:2px; font-size: var(--metric-sub-fs); line-height:1.15;
+  color:#6B7280; font-weight:600; white-space:nowrap;
 }
-
-/* (optional legacy cell if you still render a separate region-rank column) */
-.metric-rank-reg{
-  font-weight:600;
-  font-size: var(--metric-pct-fs);
-  color: var(--brand-teal);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Right value */
-.metric-pct{
-  font-size: var(--metric-pct-fs);
-  color: var(--brand-teal-3);
-  justify-self:end;
-}
-
-/* ensure rank is the same weight everywhere */
-.metrics-panel .metric-rank{
-  font-weight: 700 !important;
-  font-size: var(--metric-rank-fs);
-  color: var(--brand-teal);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
-}
-
-/* keep % consistent too */
-.metrics-panel .metric-pct{
-  font-size: var(--metric-pct-fs);
-}
-
-/* if someone wrapped the number in <b>/<strong>, don't double-bold it */
+.metric-rank-reg{ font-weight:600; font-size: var(--metric-pct-fs); color: var(--brand-teal); font-variant-numeric: tabular-nums; }
+.metric-pct{ font-size: var(--metric-pct-fs); color: var(--brand-teal-3); justify-self:end; }
 .metrics-panel .metric-rank b,
-.metrics-panel .metric-rank strong{
-  font-weight: inherit;
-}
-
-/* More padding only for the Summary box */
-.metrics-panel.summary-panel{
-  padding:16px 20px 12px 20px;
-}
+.metrics-panel .metric-rank strong{ font-weight: inherit; }
+.metrics-panel.summary-panel{ padding:16px 20px 12px 20px; }
 
 /* ---------- Summary panel (shares look with metrics panel) ---------- */
-:root{
-  --summary-offset: 20px;   /* tweak to taste */
-  --summary-min-h: 280px;
-}
-
-/* Use padding on a wrapper to avoid margin-collapsing with Streamlit columns */
 @media (min-width: 900px){
   .summary-offset{ padding-top: var(--summary-offset); }
-  /* neutralise any residual top margins inside */
   .summary-offset .summary-panel{ margin-top: 0; }
 }
-
 .summary-panel{ min-height: var(--summary-min-h); }
-
 .summary-panel .summary-title{
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--brand-teal);
-  margin: 0 0 6px 0;         /* tighter title → paragraph gap */
+  font-size: 1rem; font-weight: 600; color: var(--brand-teal);
+  margin: 0 0 6px 0;
 }
 .summary-panel p{
-  margin: 6px 0 12px;         /* tighten paragraphs */
-  line-height: 1.45;         /* match panel density */
-  font-size: .95rem;
+  margin: 6px 0 12px; line-height: 1.45; font-size: .95rem;
+  text-align: justify; text-justify: inter-word; hyphens: auto;
 }
-.summary-panel p + p{ margin-top: 8px; }  /* small gap between the two paragraphs */
-
-/* Justify the summary paragraphs */
-.summary-panel p{
-  text-align: justify;
-  text-justify: inter-word;  /* better spacing for some browsers */
-  hyphens: auto;             /* optional: cleaner breaks on long words */
-}
-
+.summary-panel p + p{ margin-top: 8px; }
 
 .hr-thin{ border:0; border-top:1px solid #E5E7EB; margin:8px 0 6px; }
 
 /* Thin separator with minimal spacing */
-.chart-separator {
-  margin: 2px 0 !important;
-  padding: 0 !important;
-  border: 0;
-  border-top: 1px solid #E5E7EB;
-  height: 0;
-}
+.chart-separator { margin: 2px 0 !important; padding: 0 !important; border: 0; border-top: 1px solid #E5E7EB; height: 0; }
 
 /* Chart card wrapper around the trend chart */
 .chart-wrap [data-testid="stVerticalBlockBorderWrapper"]{
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: 14px;
-  /* reduce bottom padding so the card isn't “fat” under the legend */
-  padding: 12px 12px 4px;
-  /* reduce bottom margin so the next row sits tight */
+  padding: 12px 12px 4px;     /* reduce bottom padding */
   margin: 6px 0 4px !important;
   box-shadow: 0 1px 0 rgba(0,0,0,.03);
 }
 
-
-
-/* ===== Right-hand info panel (50%) =====
-   Use: st.markdown("<div class='weight-panel'> ... </div>", unsafe_allow_html=True)
-*/
-
-/* The right-hand info panel */
+/* ===== Right-hand info panel (50%) ===== */
 .weight-panel{
   background: var(--panel-bg);
   border: 1.5px solid var(--panel-border);
   border-radius: 12px;
   padding: 12px 14px;
   box-shadow: 0 1px 0 rgba(0,0,0,.03);
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;                /* stretch to same height as tiles */
-  margin: 0;                     /* avoid any extra offset */
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; margin: 0;
 }
-
-/* formula chip */
 .weight-panel .formula{
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: .92rem;
-  background: rgba(12,152,143,.06);
-  border: 1px dashed var(--panel-border);
-  border-radius: 8px;
-  padding: 6px 8px;
-  display: inline-block;
-  margin: 6px 0 8px;
+  font-size: .92rem; background: rgba(12,152,143,.06);
+  border: 1px dashed var(--panel-border); border-radius: 8px;
+  padding: 6px 8px; display: inline-block; margin: 6px 0 8px;
 }
-
-/* minor text spacing inside panel */
 .weight-panel .subhead{ font-weight:600; margin: 2px 0 4px; }
 .weight-panel p{ margin: 0 0 6px; }
-
-/* keep the "Why weighted?" copy to two lines and anchored at bottom */
 .weight-panel .why{
-  font-size: .92rem;
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;   /* two lines only */
-  overflow: hidden;
-  margin: 0;
-  margin-top: auto;
+  font-size: .92rem; line-height: 1.35; display: -webkit-box;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  margin: 0; margin-top: auto;
 }
-
 
 /* ---------- Small utilities shared by both ---------- */
 .vgap-3, .section-gap{ height:6px; }

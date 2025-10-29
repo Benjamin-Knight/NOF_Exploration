@@ -11,8 +11,7 @@ import io
 import re
 from datetime import datetime
 from typing import Optional, Tuple
-
-import pandas as pd
+import pandas as pd, io
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
@@ -273,6 +272,59 @@ def sanity_check(scope: pd.DataFrame) -> None:
 
 # sanity_check(comp_scope)  # uncomment when debugging
 
+# ===== Empty state (when no CSV) =====
+def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: str | None = None):
+    # Top banner (kept)
+    st.markdown(
+        f'<div id="context-banner">👋 Upload a CSV in the sidebar to begin.</div>',
+        unsafe_allow_html=True
+    )
+
+    # Use the SAME padded wrapper as the banner so left/right edges align
+    st.markdown("<div class='info-row empty-grid'>", unsafe_allow_html=True)
+
+    left, right = st.columns(2, gap="medium")
+
+    # --- Left: quick start & template download ---
+    with left:
+        st.markdown("### Get started")
+        st.markdown(
+            "1. **Download the template** (headers only).  \n"
+            "2. **Fill the required columns** in your CSV.  \n"
+            "3. **Upload via the sidebar.**"
+        )
+
+        tpl = pd.DataFrame(columns=template_cols)
+        buf = io.BytesIO()
+        tpl.to_csv(buf, index=False)
+        st.download_button("⬇️ Download template CSV", buf.getvalue(),
+                           file_name=f"{page_name.lower()}_template.csv",
+                           use_container_width=True)
+
+        with st.expander("❓ FAQ & troubleshooting", expanded=False):
+            st.markdown(
+                "- **Missing columns?** File must include all headers shown on the right.  \n"
+                "- **% Value scale:** If your file uses 0–1, we auto-scale ×100.  \n"
+                "- **Large files:** Up to 200 MB. Remove blanks; keep only needed columns.  \n"
+                "- **Privacy:** Files are processed locally in this session."
+            )
+
+    # --- Right: the rounded “metrics panel” with two headings (no tabs) ---
+    with right:
+        panel_html = """
+        <div class="metrics-panel required-cols">
+        <div class="metrics-panel-title">Required columns</div>
+        <div class="panel-subtitle">Quarterly</div>
+        <div class="schema"><code>Quarter, Domain, Metric, Region, Provider Code, Provider Name, Numerator, Denominator, % Value, Rank, Rank_Region, Region_Size, Months Covered, Covered Months</code></div>
+        <div class="panel-subtitle">Monthly</div>
+        <div class="schema"><code>Month, Domain, Metric, Region, Provider Code, Provider Name, Numerator, Denominator, % Value, Rank, Rank_Region, Region_Size, Data_Date_Used</code></div>
+        </div>
+        """
+        st.markdown(panel_html, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)  # close .info-row.empty-grid
+
+# ------------------------ End of def -----------------------------
 
 # ------------------------- Sidebar upload -------------------------
 with st.sidebar:
@@ -296,8 +348,18 @@ with st.sidebar:
             st.session_state.pop("monthly_name",  None)
             st.rerun()
 
+# If no file yet → show empty state and stop (Monthly)
 if "monthly_bytes" not in st.session_state:
-    info_banner("👋 Upload a CSV in the sidebar to begin.")
+    render_empty_state(
+        page_name="Monthly",
+        template_cols=[
+            "Month","Domain","Metric","Region",
+            "Provider Code","Provider Name",
+            "Numerator","Denominator","% Value","Rank",
+            "Rank_Region","Region_Size","Data_Date_Used",
+        ],
+        demo_rel_path=None  # or "assets/samples/Monthly_Rankings_sample.csv" if you add one
+    )
     st.stop()
 
 try:
@@ -522,6 +584,18 @@ with left:
         yaxis_title=None, yaxis_range=[0,None], yaxis_ticksuffix="%",
         bargap=0.15, title=dict(x=0)
     )
+    
+    # Remove the bottom x-axis line (and any grid/zero line)
+    fig.update_xaxes(
+        showline=False,     # turn off the axis baseline
+        linewidth=0,        # belt-and-braces
+        linecolor="rgba(0,0,0,0)",
+        showgrid=False,
+        zeroline=False,
+        ticks="",           # no tick marks
+        mirror=False
+    )
+
     st.plotly_chart(fig, use_container_width=True)
 
 with right:
@@ -656,35 +730,50 @@ for mdt in months_sorted:
 trend = pd.DataFrame(trend_rows)
 trend["Month_lbl"] = trend["Month_dt"].dt.strftime("%b-%y")
 
-# --- Plotly figure with three lines (in a card) ---
-# --- Plotly figure with three lines ---
+# NEW: 1dp labels for hover (keep 2dp rule only if you ever need it later)
+fmt = lambda v: ("—" if pd.isna(v) else f"{v:.1f}%")
+trend["ProvLbl"] = trend["Provider"].map(fmt)
+trend["RegLbl"]  = trend["Region weighted"].map(fmt)
+trend["NatLbl"]  = trend["National weighted"].map(fmt)
+
+
 trace_kwargs = dict(mode="lines+markers", cliponaxis=False)
 
 fig_trend = go.Figure()
 
-# Provider line (solid + thicker)
+# Provider — solid blue (same as Quarterly)
 if trend["Provider"].notna().any():
     fig_trend.add_trace(go.Scatter(
         x=trend["Month_dt"], y=trend["Provider"],
         name=(provider_code or "Provider"),
-        line=dict(width=3), **trace_kwargs
+        line=dict(width=3, color="#327AD1"),
+        customdata=trend["ProvLbl"],
+        hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+        **trace_kwargs
     ))
 
-# Region weighted (dashed)
+# Region (weighted) — dashed grey
 if trend["Region weighted"].notna().any():
     fig_trend.add_trace(go.Scatter(
         x=trend["Month_dt"], y=trend["Region weighted"],
         name=f"{region_for_compare or 'Region'} (weighted)",
-        line=dict(width=2, dash="dash"), **trace_kwargs
+        line=dict(width=2, dash="dash", color="#6B7280"),
+        customdata=trend["RegLbl"],
+        hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+        **trace_kwargs
     ))
 
-# National weighted (dotted)
+# National (weighted) — dotted teal
 if trend["National weighted"].notna().any():
     fig_trend.add_trace(go.Scatter(
         x=trend["Month_dt"], y=trend["National weighted"],
         name="National (weighted)",
-        line=dict(width=2, dash="dot"), **trace_kwargs
+        line=dict(width=2, dash="dot", color="#0C988F"),
+        customdata=trend["NatLbl"],
+        hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+        **trace_kwargs
     ))
+
 
 window_end = latest_dt.strftime("%b-%y") if pd.notnull(latest_dt) else ""
 months_n = len(trend)
@@ -695,7 +784,7 @@ fig_trend.update_layout(
         x=0, xanchor="left"
     ),
     margin=dict(t=56, r=10, l=10, b=0),  # Reduced bottom margin
-    legend=dict(orientation="h", y=-0.15, yanchor="top", x=-0.03, xanchor="left", xref="paper"),
+    legend=dict(orientation="h", y=-0.19, yanchor="top", x=-0.03, xanchor="left", xref="paper"),
     hovermode="x unified",
     template="plotly_white",  # Simple clean template
     height=350
