@@ -268,8 +268,8 @@ Monthly view with KPIs, **rank deltas** vs previous month, 12-month trends, and 
 footer_html = f"""
 <hr class="hr-thin">
 <div class="footer-simple" role="contentinfo" aria-label="About NOF Rankings">
-  <p>NOF Rankings turns performance data into clear comparisons across domains and providers.</p>
-  <p>It helps you spot change fast, focus effort, and prove improvement.</p>
+  <p>The NOF Rankings App turns performance data into clear comparisons across domains and providers.</p>
+  <p>It helps you spot organizational change fast, focus effort, and prove improvement.</p>
   <div class="meta">
     Developed by: {DEV_NAME} · v{APP_VERSION} ·
     <a href="mailto:{DEV_EMAIL}?subject=NOF%20Rankings%20v{APP_VERSION}%20feedback">Email the developer</a>
