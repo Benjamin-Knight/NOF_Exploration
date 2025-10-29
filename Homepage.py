@@ -14,7 +14,7 @@ st.set_page_config(
 
 # --- App meta (edit these) ---
 DEV_NAME    = "David M. Oladoyin"
-DEV_EMAIL   = "you@yourorganisation.org"
+DEV_EMAIL   = "david.oladoyin@nhs.net"
 APP_VERSION = "4.0"
 
 # ---------- Assets ----------
