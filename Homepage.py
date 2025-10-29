@@ -12,6 +12,11 @@ st.set_page_config(
     layout="wide",
 )
 
+# --- App meta (edit these) ---
+DEV_NAME    = "David M. Oladoyin"
+DEV_EMAIL   = "you@yourorganisation.org"
+APP_VERSION = "4.0"
+
 # ---------- Assets ----------
 ROOT_ASSETS  = Path(__file__).parents[1] / "assets"
 PAGES_ASSETS = Path(__file__).parent / "assets"
@@ -159,6 +164,46 @@ def _inject_css():
       font-weight: 600;
       font-size: inherit !important;
     }
+    
+    /* Bottom value/credits — plain text (black & grey, no box) */
+    .footer-simple{
+      margin: 18px 0 10px;
+      color: #585858;              /* black-ish */
+      font-size: .95rem;
+      line-height: 1.55;
+    }
+    .footer-simple .meta{
+      margin-top: 8px;
+      font-size: .8rem;
+      color: #8E8E8E;              /* grey */
+    }
+    .footer-simple .meta a{
+      color: inherit;               /* keep it grey like the rest of meta */
+      text-decoration: underline;
+    }
+    
+    /* Tighter footer paragraphs */
+    .footer-simple{ 
+      line-height: 1.4;           /* was 1.55 */
+    }
+    .footer-simple p{
+      margin: 2px 0;              /* cut default <p> margins */
+    }
+    .footer-simple p + p{
+      margin-top: 2px;            /* tiny gap between the 2 lines */
+    }
+    /* (optional) nudge the credits line up a bit too */
+    .footer-simple .meta{
+      margin-top: 6px;            /* was 8px */
+    }
+
+    /* Tighten the space between the divider line and the footer */
+    hr.hr-thin{ 
+      margin: 125px 0 0 !important;   /* was 8px 0 6px in ui.css */
+    }
+    hr.hr-thin + .footer-simple{
+      margin-top: 6px !important;   /* was 18px in your footer */
+    }
     """
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
@@ -219,5 +264,18 @@ with col2:
 Monthly view with KPIs, **rank deltas** vs previous month, 12-month trends, and Region vs National comparisons."""
     if st.button(button_content, key="monthly_btn", use_container_width=True):
         st.switch_page("pages/2_Monthly_Rankings.py")
+
+footer_html = f"""
+<hr class="hr-thin">
+<div class="footer-simple" role="contentinfo" aria-label="About NOF Rankings">
+  <p>NOF Rankings turns performance data into clear comparisons across domains and providers.</p>
+  <p>It helps you spot change fast, focus effort, and prove improvement.</p>
+  <div class="meta">
+    Developed by: {DEV_NAME} · v{APP_VERSION} ·
+    <a href="mailto:{DEV_EMAIL}?subject=NOF%20Rankings%20v{APP_VERSION}%20feedback">Email the developer</a>
+  </div>
+</div>
+"""
+st.markdown(footer_html, unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)  # end .page-wrap
