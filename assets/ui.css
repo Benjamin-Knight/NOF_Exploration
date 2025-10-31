@@ -35,6 +35,13 @@
   --delta-bad-bg:  #FEE2E2;  --delta-bad-fg:  #991B1B;
   --delta-neu-bg:  #F3F4F6;  --delta-neu-fg:  #374151;
 
+  --progress-card-border: #B1E0DD;  /* set your colour here */
+  --progress-card-border-w: 1.5px;  /* set your thickness here (e.g., 1px, 1.5px, 2px) */
+
+  /* optional: inner outline (set to 0px to disable) */
+  --progress-card-inner-w: 0px; 
+  --progress-card-inner-color: rgba(12,152,143,.08);
+
   /* Summary panel */
   --summary-offset: 20px;
   --summary-min-h: 280px;
@@ -296,6 +303,60 @@ h2.kpi-heading{ margin-top: 2px !important; }
 .metrics-panel .metric-rank b,
 .metrics-panel .metric-rank strong{ font-weight: inherit; }
 .metrics-panel.summary-panel{ padding:16px 20px 12px 20px; }
+
+/* Plain version of the metrics panel: no box/background */
+.metrics-panel.cards-plain{
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;                /* gutter comes from .rhs-sticky */
+}
+.metrics-panel.cards-plain .metrics-panel-title{
+  margin: 0 0 12px 0;        /* keep the heading */
+}
+
+
+/* === Progress cards for RHS "Metrics within domain" (B-style) === */
+.progress-list{ display:flex; flex-direction:column; gap:14px; }
+
+.progress-card{
+  background: #ECF7F6; /* or keep your current value */
+  border: var(--progress-card-border-w) solid var(--progress-card-border); /* ← thickness + colour */
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 0 0 var(--progress-card-inner-w) var(--progress-card-inner-color) inset; /* 0px disables it */
+}
+
+.progress-head{
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom: 8px;
+}
+.progress-name{ font-size:.95rem; color: #529d96; font-weight:600; }
+.progress-percent{ font-weight:550; font-size:1.35rem; line-height:1; color: var(--brand-teal, #0C988F); }
+
+.progress-track{
+  height:8px; border-radius:999px; background: rgba(12,152,143,.15);
+  overflow:hidden;
+}
+.progress-fill{
+  height:100%; width:0%; border-radius:999px; background: var(--brand-teal, #0C988F);
+}
+
+.progress-caption{
+  display:flex; justify-content:space-between; margin-top:6px;
+  font-size:.80rem; color:#1F2937; font-weight:600;
+}
+.progress-caption .muted{ color:#6B7280; font-weight:400; }
+
+/* vertical divider between chart and cards (desktop only) */
+@media (min-width: 900px){
+  .rhs-sticky{
+    border-left: 1px solid var(--panel-sep, #B7E7E4);
+    margin-left: 18px;
+    padding-left: 18px;
+  }
+}
+
 
 /* ---------- Summary panel (shares look with metrics panel) ---------- */
 @media (min-width: 900px){

@@ -29,6 +29,11 @@ st.set_page_config(
 st.session_state.setdefault("remember_filters", True)
 REMEMBER = st.session_state.get("remember_filters", True)
 
+# NEW: simple helper to read a remembered value when enabled
+def remembered(key: str, default):
+    if REMEMBER and key in st.session_state:
+        return st.session_state[key]
+    return default
 
 # ---- Global page CSS (inline; keeps sidebar; pulls content up) ----
 
@@ -272,6 +277,7 @@ def render_metric_rank_panel(
     selected_domain: str,
     panel_title: str = RHS_PANEL_TITLE,
 ):
+    """Right-hand 'Metrics within domain' panel rendered as progress cards."""
     if not provider_code:
         st.markdown(
             (
@@ -288,9 +294,11 @@ def render_metric_rank_panel(
     scope = df[(df[QUARTER] == selected_quarter) & (df[DOMAIN] == selected_domain)].copy()
     metrics_all = sorted(scope[METRIC].dropna().unique().tolist())
 
-    rows = []
+    cards: list[str] = []
     for m in metrics_all:
         r = scope[(scope[METRIC] == m) & (scope[PROV_CODE] == provider_code)]
+        pct_val = 0.0
+
         if r.empty:
             rank_disp = "—"
             pct_disp  = "—"
@@ -300,23 +308,36 @@ def render_metric_rank_panel(
             rank_disp = "—" if pd.isna(rr[RANK]) else f"{int(rr[RANK])}"
             pct_disp  = format_percent_display(rr["Percent"], rr[METRIC])
             reg_rank  = format_region_rank(rr[RANK_REGION], rr[REGION_SIZE])
+            if pd.notna(rr["Percent"]):
+                pct_val = float(rr["Percent"])
 
-        rows.append(
-            '<div class="metric-item">'
-            f'  <div class="metric-name">{html.escape(str(m))}</div>'
-            '  <div class="metric-row two">'
-            f'    <div class="metric-rank">{rank_disp}</div>'
-            f'    <div class="metric-pct">{pct_disp}</div>'
-            '  </div>'
-            f'  <div class="metric-sub">{reg_rank}</div>'
-            '</div>'
+        # clamp width 0–100 for safety
+        width = max(0.0, min(100.0, pct_val))
+        nat_label = f"{rank_disp} (Nat.)" if rank_disp != "—" else "—"
+        reg_label = f"Regional Rank: {reg_rank}" if reg_rank != "—" else "Regional Rank: —"
+
+        card_html = (
+            f'<div class="progress-card">'
+            f'  <div class="progress-head">'
+            f'    <div class="progress-name">{html.escape(str(m))}</div>'
+            f'    <div class="progress-percent">{pct_disp}</div>'
+            f'  </div>'
+            f'  <div class="progress-track"><div class="progress-fill" style="width:{width:.2f}%;"></div></div>'
+            f'  <div class="progress-caption">'
+            f'    <span>{nat_label}</span>'
+            f'    <span class="muted">{html.escape(reg_label)}</span>'
+            f'  </div>'
+            f'</div>'
         )
+        cards.append(card_html)
+
 
     panel_html = (
-        '<div class="metrics-panel">'
+        '<div class="metrics-panel cards-plain">'
         f'<div class="metrics-panel-title">{html.escape(panel_title)}</div>'
-        + "".join(rows) +
-        '</div>'
+        '<div class="progress-list">'
+        + "".join(cards) +
+        '</div></div>'
     )
     st.markdown(panel_html, unsafe_allow_html=True)
 
@@ -788,37 +809,67 @@ except Exception as e:
 # 1) Quarter
 quarter_options = list(df[QUARTER].cat.categories)
 default_quarter = quarter_options[-1] if quarter_options else None
-quarter = st.sidebar.selectbox("Quarter", quarter_options, index=quarter_options.index(default_quarter) if default_quarter else 0)
+q_quarter = remembered("q_quarter", default_quarter)
+if q_quarter not in quarter_options:
+    q_quarter = default_quarter or (quarter_options[0] if quarter_options else None)
+quarter = st.sidebar.selectbox("Quarter", quarter_options,
+                               index=quarter_options.index(q_quarter) if q_quarter else 0)
 
 df_q = df[df[QUARTER] == quarter]
 
 # 2) Domain (custom order instead of alphabetical)
-domain_options = sorted(df_q[DOMAIN].dropna().unique().tolist(), key=lambda d: DOMAIN_ORDER.get(d, 999))
-domain = st.sidebar.selectbox("Domain", domain_options)
+domain_options = sorted(df_q[DOMAIN].dropna().unique().tolist(),
+                        key=lambda d: DOMAIN_ORDER.get(d, 999))
+q_domain = remembered("q_domain", domain_options[0] if domain_options else "")
+if q_domain not in domain_options and domain_options:
+    q_domain = domain_options[0]
+domain = st.sidebar.selectbox("Domain", domain_options,
+                              index=domain_options.index(q_domain) if domain_options else 0)
+
 df_qd = df_q[df_q[DOMAIN] == domain]
 
 # 3) Metric (depends on Domain)
 metric_options = sorted(df_qd[METRIC].dropna().unique().tolist())
-metric = st.sidebar.selectbox("Metric", metric_options)
+q_metric = remembered("q_metric", metric_options[0] if metric_options else "")
+if q_metric not in metric_options and metric_options:
+    q_metric = metric_options[0]
+metric = st.sidebar.selectbox("Metric", metric_options,
+                              index=metric_options.index(q_metric) if metric_options else 0)
+
 df_qdm = df_qd[df_qd[METRIC] == metric]
 
 # 4) Region (optional; no selection = all)
 region_options = ["(All Regions)"] + sorted(df_qdm[REGION].dropna().unique().tolist())
-region_choice = st.sidebar.selectbox("Region", region_options)
+q_region = remembered("q_region", "(All Regions)")
+if q_region not in region_options:
+    q_region = "(All Regions)"
+region_choice = st.sidebar.selectbox("Region", region_options,
+                                     index=region_options.index(q_region))
 region_selected = None if region_choice == "(All Regions)" else region_choice
 df_qdmr = df_qdm if region_selected is None else df_qdm[df_qdm[REGION] == region_selected]
 
 # 5) Provider (optional; filtered by Quarter+Domain+Metric and Region if set)
 prov_opts_labels = provider_options(df_qdmr)
-default_provider_label = next((lbl for lbl in prov_opts_labels if extract_code_from_label(lbl) == DEFAULT_PROVIDER_CODE), None)
+default_provider_label = next(
+    (lbl for lbl in prov_opts_labels if extract_code_from_label(lbl) == DEFAULT_PROVIDER_CODE),
+    None
+)
 
-# Check if there's a shared provider selection from another page
+# Shared provider from other pages (kept)
 shared_provider = st.session_state.get("shared_provider_code", None) if REMEMBER else None
+# NEW: read remembered local label safely
+provider_label_rem = st.session_state.get("q_provider", "(None)")
 
-# Determine the default index based on shared provider, or fall back to default
+# Determine the default index with clear precedence:
+# 1) shared provider (if available in current options)
+# 2) remembered local provider label
+# 3) hard-coded default provider
+# 4) "(None)"
 if shared_provider and any(extract_code_from_label(lbl) == shared_provider for lbl in prov_opts_labels):
     matching_label = next((lbl for lbl in prov_opts_labels if extract_code_from_label(lbl) == shared_provider), None)
-    default_index = prov_opts_labels.index(matching_label) + 1 if matching_label else 0
+    default_index = (["(None)"] + prov_opts_labels).index(matching_label) if matching_label else 0
+elif provider_label_rem in (["(None)"] + prov_opts_labels):
+    default_index = (["(None)"] + prov_opts_labels).index(provider_label_rem)
 elif default_provider_label:
     default_index = prov_opts_labels.index(default_provider_label) + 1
 else:
@@ -831,6 +882,21 @@ provider_label = st.sidebar.selectbox(
     help="Selecting a provider highlights it and shows KPIs."
 )
 provider_code = None if provider_label == "(None)" else extract_code_from_label(provider_label)
+
+# Save current Quarterly filters to session (so they survive page hops)
+if REMEMBER:
+    st.session_state.update({
+        "q_quarter": quarter,
+        "q_domain": domain,
+        "q_metric": metric,
+        "q_region": region_choice,
+        "q_provider": provider_label,
+    })
+
+# Keep existing cross-page behaviour: only update shared provider if a real one is chosen
+if REMEMBER and provider_code:
+    st.session_state["shared_provider_code"] = provider_code
+
 
 # Always save the provider code to shared state (for cross-page sync)
 # Only update shared when a real provider is selected AND remember is ON
@@ -916,7 +982,7 @@ if provider_code:
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
 
 # ===================== Chart (left) + RHS panel (right) =======
-left, right = st.columns([0.79, 0.21], gap="large")
+left, right = st.columns([0.75, 0.25], gap="medium")
 
 with left:
     # Chart data (Region applied; Provider does NOT filter the set)
@@ -995,16 +1061,35 @@ with t_left:
         ))
     
     fig_trend.update_layout(
-        title=dict(text=f"{metric} — quarterly trend", x=0, xanchor="left"),
+        title=dict(text=f"{metric} — Quarterly Trend", x=0, xanchor="left"),
         template="simple_white",
         hovermode="x unified",
-        legend=dict(orientation="h", y=-0.10, yanchor="top", x=-0.03, xanchor="left"),
+        legend=dict(orientation="h", y=-0.10, yanchor="top", x=-0.05, xanchor="left"),
         height=320,                               # keep in sync with summary min-height if you set one
         margin=dict(l=10, r=10, t=50, b=6),
         hoverlabel=dict(namelength=-1),
     )
-    fig_trend.update_yaxes(title_text=None, ticksuffix="%", rangemode="tozero")
-    fig_trend.update_xaxes(title_text=None)
+    fig_trend.update_yaxes(
+        showgrid=True, 
+        gridcolor="#E5E7EB", 
+        gridwidth=1, 
+        ticksuffix="%",
+        autorange=True, 
+        automargin=True,
+        showline=False,            # HIDE the bottom axis baseline
+    )
+    
+    fig_trend.update_xaxes(
+        title_text=None,
+        showgrid=False,            # no vertical gridlines
+        showline=False,            # HIDE the bottom axis baseline
+        zeroline=False,            # no extra line at x=0
+        linewidth=0,
+        linecolor="rgba(0,0,0,0)",
+        ticks="",                  # no tick marks
+        mirror=False
+    )
+
     
     TREND_H = 450
     fig_trend.update_layout(autosize=False, height=TREND_H)

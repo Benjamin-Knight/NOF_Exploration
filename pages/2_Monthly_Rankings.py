@@ -554,7 +554,7 @@ if provider_code:
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
 
 # --------------- Charts (left) + Metrics panel (right) -----------
-left, right = st.columns([0.78, 0.22], gap="large")
+left, right = st.columns([0.75, 0.25], gap="medium")
 
 with left:
     # 1) Bar chart by Overall Rank (Region narrows; Provider does NOT filter)
@@ -599,71 +599,86 @@ with left:
     st.plotly_chart(fig, use_container_width=True)
 
 with right:
-    # Keep the panel sticky (same as Quarterly)
     st.markdown('<div class="rhs-sticky">', unsafe_allow_html=True)
 
-    # Build the panel in ONE HTML string to avoid Streamlit wrapper gaps
     if not provider_code:
-        panel_html = (
-            '<div class="metrics-panel">'
-            '<div class="metrics-panel-title">📋Metrics within domain</div>'
-            '<div class="metric-item"><div class="metric-name">'
-            'Select a provider to see ranks across all metrics.'
-            '</div></div></div>'
+        st.markdown(
+            (
+                '<div class="metrics-panel cards-plain">'
+                '<div class="metrics-panel-title">📋Metrics within domain</div>'
+                '<div class="metric-item"><div class="metric-name">'
+                'Select a provider to see ranks across all metrics.'
+                '</div></div></div>'
+            ),
+            unsafe_allow_html=True,
         )
-        st.markdown(panel_html, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)  # close .rhs-sticky
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         scope = df[(df["Month_disp"] == month) & (df["Domain"] == domain)].copy()
         metrics_all = sorted(scope["Metric"].dropna().unique().tolist())
 
-        rows = []
+        cards = []
         for m in metrics_all:
             r = scope[(scope["Metric"] == m) & (scope["Provider_Code"] == provider_code)]
-            if r.empty:
-                rank_txt = "—"
-                sub_txt  = "—"                      # e.g., region rank/size line
-                pct_txt  = "—"
-            else:
+
+            rank_txt = "—"
+            reg_txt  = "—"
+            pct_txt  = "—"
+            pct_val  = 0.0
+
+            if not r.empty:
                 rr = r.iloc[0]
-                # left main number
+
+                # 1) National rank (left caption)
                 rank_txt = "—" if pd.isna(rr["Rank"]) else f"{int(rr['Rank'])}"
 
-                # second line under the rank: "X out of N" (or just X if N missing)
+                # 2) Regional rank text from existing logic
                 if pd.isna(rr.get("Rank_Region")) and pd.isna(rr.get("Region_Size")):
-                    sub_txt = "—"
+                    reg_txt = "—"
                 else:
                     rr_val = "—" if pd.isna(rr.get("Rank_Region")) else f"{int(rr['Rank_Region'])}"
                     if pd.isna(rr.get("Region_Size")):
-                        sub_txt = rr_val
+                        reg_txt = rr_val
                     else:
-                        sub_txt = f"{rr_val} out of {int(rr['Region_Size'])}"
+                        reg_txt = f"{rr_val} out of {int(rr['Region_Size'])}"
 
-                # right value
+                # 3) % display (keep your 1dp / 2dp rule)
                 if pd.isna(rr["Percent"]):
                     pct_txt = "—"
                 else:
                     pct_txt = f"{rr['Percent']:.2f}%" if str(m).strip().lower() == "52+ weeks" else f"{rr['Percent']:.1f}%"
+                    pct_val = float(rr["Percent"])
 
-            # build one row (two-column grid)
-            rows.append(
-                '<div class="metric-item">'
-                f'  <div class="metric-name">{_html.escape(str(m))}</div>'
-                '  <div class="metric-row two">'
-                f'    <div class="metric-rank">{rank_txt}<div class="metric-sub">{_html.escape(sub_txt)}</div></div>'
-                f'    <div class="metric-pct">{pct_txt}</div>'
-                '  </div>'
-                '</div>'
+            # width for the bar (safeguard 0–100)
+            width = max(0.0, min(100.0, pct_val))
+            nat_label = f"{rank_txt} (Nat.)" if rank_txt != "—" else "—"
+            reg_label = f"Regional Rank: {reg_txt}" if reg_txt != "—" else "Regional Rank: —"
+
+            card_html = (
+                f'<div class="progress-card">'
+                f'  <div class="progress-head">'
+                f'    <div class="progress-name">{_html.escape(str(m))}</div>'
+                f'    <div class="progress-percent">{pct_txt}</div>'
+                f'  </div>'
+                f'  <div class="progress-track"><div class="progress-fill" style="width:{width:.2f}%;"></div></div>'
+                f'  <div class="progress-caption">'
+                f'    <span>{nat_label}</span>'
+                f'    <span class="muted">{_html.escape(reg_label)}</span>'
+                f'  </div>'
+                f'</div>'
             )
+            cards.append(card_html)
+
 
         panel_html = (
-            '<div class="metrics-panel">'
+            '<div class="metrics-panel cards-plain">'
             '<div class="metrics-panel-title">📋Metrics within domain</div>'
-            + "".join(rows) +
+            '<div class="progress-list">' + "".join(cards) + '</div>'
             '</div>'
         )
         st.markdown(panel_html, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)  # close .rhs-sticky
+
 
 # 2) 24-month trend that IGNORES the Month slicer
 # Always use the full Domain+Metric slice (not month-filtered)
