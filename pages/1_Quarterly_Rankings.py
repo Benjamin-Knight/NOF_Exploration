@@ -762,25 +762,20 @@ def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: 
 
 # ===================== Sidebar (Upload + Filters) =============
 with st.sidebar:
-    st.header("📁 Data")
+    st.header("📁 Quarterly data")
 
-    if "quarterly_bytes" not in st.session_state:
-        up = st.file_uploader(
-            "Upload the quarterly CSV (columns A–N).",
-            type=["csv"],
-            key="quarterly_uploader",
-            help="Upload once — it will persist while this app is open."
-        )
-        if up is not None:
-            st.session_state["quarterly_bytes"] = up.getvalue()
-            st.session_state["quarterly_name"]  = up.name
-            st.rerun()
-    else:
+    if "quarterly_bytes" in st.session_state:
         st.caption(f"Using: {st.session_state.get('quarterly_name', '(uploaded)')}")
         if st.button("Clear file", key="clear_quarterly"):
             st.session_state.pop("quarterly_bytes", None)
             st.session_state.pop("quarterly_name",  None)
             st.rerun()
+    else:
+        st.warning("No Quarterly CSV loaded. Go to the Homepage to upload.", icon="⚠️")
+        if st.button("Go to Homepage", key="goto_home_for_quarterly"):
+            st.switch_page("Homepage.py")
+        st.stop()
+
 
 # If no file yet → show empty state and stop (Monthly)
 if "quarterly_bytes" not in st.session_state:

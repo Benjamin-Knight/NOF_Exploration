@@ -159,6 +159,7 @@ def _inject_css():
       color: #1F2937 !important;
       opacity: 1 !important;
     }
+    
     /* Bold in descriptions keeps normal size */
     .stButton > button strong{
       font-weight: 600;
@@ -204,6 +205,32 @@ def _inject_css():
     hr.hr-thin + .footer-simple{
       margin-top: 6px !important;   /* was 18px in your footer */
     }
+    
+    /* === Force compact typography ONLY in the sidebar === */
+    [data-testid="stSidebar"] .stButton > button,
+    [data-testid="stSidebar"] button[kind][data-baseweb="button"]{
+      font-size: 0.90rem !important;     /* <- overall button text size */
+      line-height: 1.2 !important;
+      padding: 8px 12px !important;
+    }
+
+    /* Cancel the "first line = 32px" rule inside the sidebar */
+    [data-testid="stSidebar"] .stButton > button span:first-child,
+    [data-testid="stSidebar"] .stButton > button p:first-child{
+      font-size: inherit !important;      /* inherit the 0.90rem above */
+      font-weight: 600 !important;        /* keep it a bit bolder as a title */
+      margin-bottom: 0 !important;
+    }
+
+    /* Ensure any inner spans/paragraphs also inherit the compact size */
+    [data-testid="stSidebar"] .stButton > button span,
+    [data-testid="stSidebar"] .stButton > button p{
+      font-size: inherit !important;
+      line-height: 1.2 !important;
+      margin: 0 !important;
+      color: inherit !important;
+    }
+    
     """
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
@@ -217,6 +244,49 @@ def _greeting(hour: int) -> str:
     if 5 <= hour < 12: return "Good Morning 🌅"
     if 12 <= hour < 17: return "Good Afternoon 🌤️"
     return "Good Evening 🌙"
+
+# --- Global, persistent uploaders (Homepage sidebar) ---
+with st.sidebar:
+    st.header("📥 Upload data files")
+
+    # Quarterly
+    if "quarterly_bytes" not in st.session_state:
+        up_q = st.file_uploader(
+            "Upload Quarterly CSV",
+            type=["csv"],
+            key="home_quarterly_uploader",
+            help="Columns: Quarter, Domain, Metric, Region, Provider Code, …"
+        )
+        if up_q is not None:
+            st.session_state["quarterly_bytes"] = up_q.getvalue()
+            st.session_state["quarterly_name"]  = up_q.name
+            st.rerun()
+    else:
+        st.caption(f"Using: {st.session_state.get('quarterly_name', '(uploaded)')}")
+        if st.button("Clear Quarterly", key="home_clear_quarterly"):
+            st.session_state.pop("quarterly_bytes", None)
+            st.session_state.pop("quarterly_name",  None)
+            st.rerun()
+    
+    # Monthly
+    if "monthly_bytes" not in st.session_state:
+        up_m = st.file_uploader(
+            "Upload Monthly CSV",
+            type=["csv"],
+            key="home_monthly_uploader",
+            help="Columns: Month, Domain, Metric, Region, Provider_Code, …"
+        )
+        if up_m is not None:
+            st.session_state["monthly_bytes"] = up_m.getvalue()
+            st.session_state["monthly_name"]  = up_m.name
+            st.rerun()
+    else:
+        st.caption(f"Using: {st.session_state.get('monthly_name', '(uploaded)')}")
+        if st.button("Clear Monthly", key="home_clear_monthly"):
+            st.session_state.pop("monthly_bytes", None)
+            st.session_state.pop("monthly_name",  None)
+            st.rerun()
+
 
 # ---------- PAGE CONTENT ----------
 st.markdown('<div class="page-wrap">', unsafe_allow_html=True)

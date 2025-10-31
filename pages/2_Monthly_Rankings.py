@@ -330,23 +330,18 @@ def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: 
 with st.sidebar:
     st.header("📁 Monthly data")
 
-    if "monthly_bytes" not in st.session_state:
-        up = st.file_uploader(
-            "Upload Monthly CSV",
-            type=["csv"],
-            key="monthly_uploader",
-            help="Columns: Month, Domain, Metric, Region, Provider_Code, …"
-        )
-        if up is not None:
-            st.session_state["monthly_bytes"] = up.getvalue()
-            st.session_state["monthly_name"]  = up.name
-            st.rerun()  # immediately hide the uploader (and its ✕)
-    else:
+    if "monthly_bytes" in st.session_state:
         st.caption(f"Using: {st.session_state.get('monthly_name', '(uploaded)')}")
         if st.button("Clear file", key="clear_monthly"):
             st.session_state.pop("monthly_bytes", None)
             st.session_state.pop("monthly_name",  None)
             st.rerun()
+    else:
+        st.warning("No Monthly CSV loaded. Go to the Homepage to upload.", icon="⚠️")
+        if st.button("Go to Homepage", key="goto_home_for_monthly"):
+            st.switch_page("Homepage.py")
+        st.stop()
+
 
 # If no file yet → show empty state and stop (Monthly)
 if "monthly_bytes" not in st.session_state:

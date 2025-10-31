@@ -42,6 +42,11 @@
   --progress-card-inner-w: 0px; 
   --progress-card-inner-color: rgba(12,152,143,.08);
 
+  --sidebar-btn-border:        #cecece; /* base colour */
+  --sidebar-btn-border-hover:  var(--brand-teal-2); /* hover colour */
+  --sidebar-btn-border-width:  1px;                 /* thickness (e.g., 1.5px) */
+  --sidebar-btn-radius:        10px;                /* corner radius */
+
   /* Summary panel */
   --summary-offset: 20px;
   --summary-min-h: 280px;
@@ -411,6 +416,68 @@ h2.kpi-heading{ margin-top: 2px !important; }
   font-size: .92rem; line-height: 1.35; display: -webkit-box;
   -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
   margin: 0; margin-top: auto;
+}
+
+/* ===== Sidebar buttons — compact & neutral (does not affect main page) ===== */
+[data-testid="stSidebar"] .stButton { 
+  margin: 6px 0 10px;                /* tighter spacing */
+}
+
+[data-testid="stSidebar"] .stButton > button{
+  width: 100%;
+  background: #ffffff !important; /* match sidebar */
+  color: #1F2937 !important;
+  border: 1px solid var(#ffffff) !important;
+  border-radius: 10px !important;
+  padding: 8px 12px !important;       /* smaller */
+  font-size: 0.50rem !important;      /* smaller text */
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  box-shadow: none !important;        /* remove lift */
+  transform: none !important;         /* cancel your main hover translate */
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  white-space: normal !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover{
+  background: rgba(5,133,124,.06) !important;    /* brand-teal tint */
+  border-color: var(--brand-teal-2) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+[data-testid="stSidebar"] .stButton > button:active{
+  background: rgba(5,133,124,.12) !important;
+}
+[data-testid="stSidebar"] .stButton > button:focus{
+  outline: 2px solid rgba(5,133,124,.25) !important;
+  outline-offset: 1px !important;
+}
+
+/* Ensure inner text doesn't inherit the big-button typography */
+[data-testid="stSidebar"] .stButton > button p,
+[data-testid="stSidebar"] .stButton > button span{
+  font-size: inherit !important;
+  line-height: 1.2 !important;
+  margin: 0 !important;
+  color: inherit !important;
+}
+
+[data-testid="stSidebar"] .stButton > button{
+  border: var(--sidebar-btn-border-width) solid var(--sidebar-btn-border) !important;
+  border-radius: var(--sidebar-btn-radius) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover{
+  border-color: var(--sidebar-btn-border-hover) !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:focus{
+  outline: 2px solid rgba(5,133,124,.25) !important; /* optional focus ring */
+  outline-offset: 1px !important;
 }
 
 /* ---------- Small utilities shared by both ---------- */
