@@ -200,7 +200,7 @@ def _inject_css():
 
     /* Tighten the space between the divider line and the footer */
     hr.hr-thin{ 
-      margin: 125px 0 0 !important;   /* was 8px 0 6px in ui.css */
+      margin: 100px 0 0 !important;   /* was 8px 0 6px in ui.css */
     }
     hr.hr-thin + .footer-simple{
       margin-top: 6px !important;   /* was 18px in your footer */
@@ -229,6 +229,18 @@ def _inject_css():
       line-height: 1.2 !important;
       margin: 0 !important;
       color: inherit !important;
+    }
+    
+    /* Make disabled buttons obviously disabled */
+    .stButton > button:disabled{
+      opacity: 0.45 !important;
+      cursor: not-allowed !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .stButton > button:disabled:hover{
+      background: #EFF6FF !important;
+      border-color: #BFDBFE !important;
     }
     
     """
@@ -317,23 +329,39 @@ st.markdown(f'<div class="greeting-date">{now.strftime("%A")}, {now.day}{_ordina
 st.markdown('<div style="height:24px"></div>', unsafe_allow_html=True)  # ← add space here
 
 # ---------- BIG CLICKABLE BUTTONS ----------
+show_compare = ("monthly_bytes" in st.session_state) or ("quarterly_bytes" in st.session_state)
+
 col1, col2 = st.columns(2, gap="medium")
 
 with col1:
-    button_content = """
+    # --- Quarterly (top-left)
+    q_btn = """
 **Quarterly Rankings**
 
 Explore provider performance by **quarter**, domain and metric. Includes rank bar chart, sticky metric panel, and KPIs."""
-    if st.button(button_content, key="quarterly_btn", use_container_width=True):
+    if st.button(q_btn, key="quarterly_btn", use_container_width=True):
         st.switch_page("pages/1_Quarterly_Rankings.py")
 
+    # Small spacer between stacked buttons
+    st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+
+    # --- Compare Providers (under Quarterly)
+    c_btn = """
+**Compare Providers**
+
+Side-by-side view of two providers across **Monthly** or **Quarterly** data with KPIs, distribution, and domain cards."""
+    if st.button(c_btn, key="compare_btn", use_container_width=True):
+        st.switch_page("pages/3_Compare_Providers.py")
+
 with col2:
-    button_content = """
+    # --- Monthly (right column)
+    m_btn = """
 **Monthly Rankings**
 
 Monthly view with KPIs, **rank deltas** vs previous month, 12-month trends, and Region vs National comparisons."""
-    if st.button(button_content, key="monthly_btn", use_container_width=True):
+    if st.button(m_btn, key="monthly_btn", use_container_width=True):
         st.switch_page("pages/2_Monthly_Rankings.py")
+
 
 footer_html = f"""
 <hr class="hr-thin">

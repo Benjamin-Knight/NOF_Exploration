@@ -136,7 +136,7 @@ BAR_NEUTRAL_HEX = "#D5DAE1"    # light grey
 DEFAULT_PROVIDER_CODE = "RWP"
 
 DOMAIN_ORDER = {"A&E": 0, "Cancer": 1, "RTT": 2, "Diagnostic": 3}
-RHS_PANEL_TITLE = "📋Metrics within domain"
+RHS_PANEL_TITLE = "Metrics within domain"
 
 
 # ===================== Helpers ===============================
@@ -764,7 +764,9 @@ def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: 
 with st.sidebar:
     st.header("📁 Quarterly data")
 
-    if "quarterly_bytes" in st.session_state:
+    has_quarterly = ("quarterly_bytes" in st.session_state)
+
+    if has_quarterly:
         st.caption(f"Using: {st.session_state.get('quarterly_name', '(uploaded)')}")
         if st.button("Clear file", key="clear_quarterly"):
             st.session_state.pop("quarterly_bytes", None)
@@ -774,23 +776,21 @@ with st.sidebar:
         st.warning("No Quarterly CSV loaded. Go to the Homepage to upload.", icon="⚠️")
         if st.button("Go to Homepage", key="goto_home_for_quarterly"):
             st.switch_page("Homepage.py")
-        st.stop()
+    # ← No st.stop() here
 
 
 # If no file yet → show empty state and stop (Monthly)
 if "quarterly_bytes" not in st.session_state:
     render_empty_state(
         page_name="Quarterly",
-        template_cols=[  # your quarterly headers
-            "Quarter","Domain","Metric","Region",
-            "Provider Code","Provider Name",
-            "Numerator","Denominator","% Value","Rank",
-            "Rank_Region","Region_Size",
-            "Months Covered","Covered Months"
-        ],
-        demo_rel_path=None  # or "assets/samples/Monthly_Rankings_sample.csv" if you add one
+        template_cols=[ "Quarter","Domain","Metric","Region",
+                        "Provider Code","Provider Name","Numerator","Denominator",
+                        "% Value","Rank","Rank_Region","Region_Size",
+                        "Months Covered","Covered Months" ],
+        demo_rel_path=None
     )
     st.stop()
+
 
 # ===================== Load Data ===============================
 # load_csv already expects a file-like object; wrap the bytes
@@ -1013,7 +1013,7 @@ with right:
 
 # -------- Trend + Summary row (keeps your earlier logic) --------
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
-t_left, t_right = st.columns([0.62, 0.38], gap="large")
+t_left, t_right = st.columns([0.62, 0.38], gap="medium")
 
 with t_left:
     region_for_compare = resolve_region_for_compare(df, domain, metric, provider_code, region_selected)

@@ -50,6 +50,9 @@
   /* Summary panel */
   --summary-offset: 20px;
   --summary-min-h: 280px;
+
+  --prov-title-fs: 19px;    /* desktop/base size */
+  --prov-title-fs-sm: 16px; /* smaller on narrow screens */
 }
 
 /* Keep Streamlit header present (sidebar hamburger works) but neutral */
@@ -320,6 +323,21 @@ h2.kpi-heading{ margin-top: 2px !important; }
   margin: 0 0 12px 0;        /* keep the heading */
 }
 
+/* Snap-to-content variant (no forced height) */
+.metrics-panel.compact{ 
+  min-height: initial !important;   /* or: auto / unset */
+  padding-bottom: 14px;             /* keep your bottom padding */
+}
+
+/* Kill the extra trailing space from the last element in a panel */
+.metrics-panel > :last-child{ margin-bottom: 0 !important; }
+
+/* Tame default block margins inside panels */
+.metrics-panel p,
+.metrics-panel ol,
+.metrics-panel ul{ margin: 0 0 8px 0; }
+.metrics-panel li{ margin-bottom: 4px; }
+
 
 /* === Progress cards for RHS "Metrics within domain" (B-style) === */
 .progress-list{ display:flex; flex-direction:column; gap:14px; }
@@ -478,6 +496,111 @@ h2.kpi-heading{ margin-top: 2px !important; }
 [data-testid="stSidebar"] .stButton > button:focus{
   outline: 2px solid rgba(5,133,124,.25) !important; /* optional focus ring */
   outline-offset: 1px !important;
+}
+
+
+/* Compare page — KPI grid with exact 3px gaps */
+.kpi-grid{
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;                      /* ← the only space between tiles */
+  align-items: stretch;
+}
+.kpi-grid .kpi-card{
+  margin: 0;                     /* no extra outer margin */
+  padding: 10px 12px;            /* tighten inner padding if you like */
+  width: 100%;
+}
+
+/* Optional: responsive wrap on narrow screens */
+@media (max-width: 900px){
+  .kpi-grid{ grid-template-columns: repeat(2, 1fr); gap: 6px; }
+}
+
+/* Compare page: extra air before the Distribution separator */
+.chart-separator.cmp-sep{
+  margin-top: 20px !important;   /* space BELOW KPI columns */
+  margin-bottom: 8px !important; /* optional space under the line */
+}
+
+/* Provider name above KPI tiles */
+.prov-kpi-title{
+  font-size: var(--prov-title-fs);
+  line-height: 1.5 !important;   /* slight breathing for readability */
+  margin: 0 !important;
+  padding-top: 20px !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--prov-title-lines);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Group the title and region into a tight two-line block */
+.prov-title-wrap{
+  display:flex;
+  flex-direction:column;
+  gap: 0 !important;               /* no gap between name + region */
+  padding-top: 16px;                /* ✅ add space above the name */
+  padding-bottom: 12px;                /* ✅ add space above the name */
+  margin: 0 0 6px 0;               /* ✅ smaller gap under region (was 8px) */
+
+  /* Keep A/B rows aligned but drop the extra 20% padding */
+  min-height: calc((var(--prov-title-lines, 2) + 1) * 1em);
+  align-items: flex-start;
+}
+
+/* Region line (second line) */
+.prov-kpi-sub{
+  font-size: 14px;
+  line-height: 1.5 !important;       /* no extra leading */
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #6B7280;
+  font-weight: 500;
+  transform: translateY(-1px);     /* micro pull-up so it “kisses” the name */
+}
+
+/* Ensure Streamlit wrappers don’t reintroduce spacing */
+[data-testid="stMarkdown"] h3.prov-kpi-title{
+  font-size: var(--prov-title-fs) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+[data-testid="stMarkdown"] .prov-title-wrap > *{
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+
+/* smaller on narrower screens */
+@media (max-width: 1200px){
+  .prov-kpi-title{ font-size: var(--prov-title-fs-sm); }
+}
+
+@media (max-width: 1200px){
+  .prov-kpi-sub{ font-size: 14px; }
+}
+
+[data-testid="stMarkdown"] h3.prov-kpi-title{
+  font-size: var(--prov-title-fs) !important;
+  margin: 0 !important;           /* enforce zero margin on the heading */
+}
+
+/* micro pull-up of the region line by 1–2px if desired */
+.prov-kpi-sub{ margin-top: -1px !important; }
+
+
+/* Remove Streamlit wrapper margins between the title block and the KPI block */
+[data-testid="stMarkdown"]:has(.prov-kpi-title){
+  margin-bottom: 4px !important;  /* tighten the title block itself */
+}
+[data-testid="stMarkdown"]:has(.prov-kpi-title) + [data-testid="stMarkdown"]{
+  margin-top: 0 !important;       /* kill the gap above the KPI cards */
+}
+
+.compare-summary-panel {
+  min-height: 200px;  /* Adjust this value as needed */
+  padding:20px 24px 20px 24px;
 }
 
 /* ---------- Small utilities shared by both ---------- */

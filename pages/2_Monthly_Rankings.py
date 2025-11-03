@@ -330,7 +330,9 @@ def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: 
 with st.sidebar:
     st.header("📁 Monthly data")
 
-    if "monthly_bytes" in st.session_state:
+    has_monthly = ("monthly_bytes" in st.session_state)
+
+    if has_monthly:
         st.caption(f"Using: {st.session_state.get('monthly_name', '(uploaded)')}")
         if st.button("Clear file", key="clear_monthly"):
             st.session_state.pop("monthly_bytes", None)
@@ -340,7 +342,7 @@ with st.sidebar:
         st.warning("No Monthly CSV loaded. Go to the Homepage to upload.", icon="⚠️")
         if st.button("Go to Homepage", key="goto_home_for_monthly"):
             st.switch_page("Homepage.py")
-        st.stop()
+    # ← No st.stop() here
 
 
 # If no file yet → show empty state and stop (Monthly)
@@ -349,11 +351,10 @@ if "monthly_bytes" not in st.session_state:
         page_name="Monthly",
         template_cols=[
             "Month","Domain","Metric","Region",
-            "Provider Code","Provider Name",
-            "Numerator","Denominator","% Value","Rank",
-            "Rank_Region","Region_Size","Data_Date_Used",
+            "Provider Code","Provider Name","Numerator","Denominator",
+            "% Value","Rank","Rank_Region","Region_Size","Data_Date_Used",
         ],
-        demo_rel_path=None  # or "assets/samples/Monthly_Rankings_sample.csv" if you add one
+        demo_rel_path=None
     )
     st.stop()
 
@@ -600,7 +601,7 @@ with right:
         st.markdown(
             (
                 '<div class="metrics-panel cards-plain">'
-                '<div class="metrics-panel-title">📋Metrics within domain</div>'
+                '<div class="metrics-panel-title">Metrics within domain</div>'
                 '<div class="metric-item"><div class="metric-name">'
                 'Select a provider to see ranks across all metrics.'
                 '</div></div></div>'
@@ -667,7 +668,7 @@ with right:
 
         panel_html = (
             '<div class="metrics-panel cards-plain">'
-            '<div class="metrics-panel-title">📋Metrics within domain</div>'
+            '<div class="metrics-panel-title">Metrics within domain</div>'
             '<div class="progress-list">' + "".join(cards) + '</div>'
             '</div>'
         )
