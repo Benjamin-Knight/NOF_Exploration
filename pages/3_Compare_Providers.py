@@ -74,9 +74,6 @@ def render_compare_empty_state():
         )
         
         st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-        
-        if st.button("Go to Homepage", key="cmp_empty_go_home"):
-            st.switch_page("Homepage.py")
 
     with right:
         st.markdown(
