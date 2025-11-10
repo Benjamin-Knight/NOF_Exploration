@@ -2,6 +2,8 @@
 from pathlib import Path
 from datetime import datetime
 import streamlit as st
+from io import BytesIO
+import pandas as pd
 
 # Always-on sharing
 st.session_state.setdefault("remember_filters", True)
@@ -64,17 +66,6 @@ def _inject_css():
     }
 
     .page-wrap { max-width: 1200px; margin: 0 auto; }
-
-    /* Header */
-    .app-header{ display:flex; align-items:center; gap:12px; margin: 8px 0 6px; }
-    .app-logo svg{ height:34px; width:auto; display:block; }
-
-    /* Page title exactly +3px bigger than description */
-    #page-title{
-      margin:0;
-      font-size: calc(var(--desc-size) + 3px) !important;
-      line-height: 1.25;
-    }
 
     /* Subtitle callout */
     .home-sub{
@@ -257,6 +248,102 @@ def _greeting(hour: int) -> str:
     if 12 <= hour < 17: return "Good Afternoon 🌤️"
     return "Good Evening 🌙"
 
+# --- Pull provider codes from an uploaded CSV (fast + robust) ---
+def _provider_codes_from_bytes(raw: bytes) -> list[str]:
+    """
+    Reads only the provider code column from the CSV (if present).
+    Handles both 'Provider Code' (Quarterly) and 'Provider_Code' (Monthly).
+    Returns a sorted unique list of non-empty strings.
+    """
+    if not raw:
+        return []
+    # Read header only to find the correct column name
+    try:
+        header = pd.read_csv(BytesIO(raw), nrows=0)
+    except Exception:
+        return []
+    cols = list(header.columns)
+
+    # Try likely column names in order
+    candidates = [
+        "Provider Code", "Provider_Code", "Provider code",
+        "ProviderCode", "Provider", "Provider_ID", "Provider Id"
+    ]
+    target = next((c for c in candidates if c in cols), None)
+    if not target:
+        return []
+
+    # Read just that column
+    try:
+        ser = pd.read_csv(BytesIO(raw), usecols=[target], dtype={target: "string"})[target]
+    except Exception:
+        return []
+
+    ser = ser.fillna("").str.strip()
+    codes = sorted(x for x in ser.unique().tolist() if x)
+    return codes
+
+@st.cache_data(show_spinner=False)
+def _codes_and_names_from_bytes(file_bytes: bytes) -> pd.DataFrame:
+    """Return a DataFrame with columns: Provider_Code, Provider_Name."""
+    if not file_bytes:
+        return pd.DataFrame(columns=["Provider_Code", "Provider_Name"])
+    try:
+        df = pd.read_csv(BytesIO(file_bytes), dtype=str)
+    except Exception:
+        return pd.DataFrame(columns=["Provider_Code", "Provider_Name"])
+
+    # Normalise columns: "Provider Code" / "Provider_Code" → provider_code, etc.
+    norm = {c: c.strip().lower().replace(" ", "_") for c in df.columns}
+    df = df.rename(columns=norm)
+
+    if "provider_code" not in df.columns:
+        return pd.DataFrame(columns=["Provider_Code", "Provider_Name"])
+    if "provider_name" not in df.columns:
+        df["provider_name"] = ""
+
+    out = df[["provider_code", "provider_name"]].copy()
+    out = out.rename(columns={"provider_code": "Provider_Code", "provider_name": "Provider_Name"})
+    for c in out.columns:
+        out[c] = out[c].astype(str).str.strip()
+
+    out = (out.dropna(subset=["Provider_Code"])
+               .drop_duplicates()
+               .sort_values(["Provider_Code", "Provider_Name"]))
+    return out[["Provider_Code", "Provider_Name"]]
+
+
+def _build_provider_labels_and_map() -> tuple[list[str], dict[str, str]]:
+    """
+    Combine Monthly + Quarterly uploads, de-dupe by code, prefer first non-empty name.
+    Returns:
+      - labels: ["CODE — NAME", ...] (or "CODE" if name empty)
+      - label_to_code: mapping from label to CODE
+    """
+    frames = []
+    if "quarterly_bytes" in st.session_state:
+        frames.append(_codes_and_names_from_bytes(st.session_state["quarterly_bytes"]))
+    if "monthly_bytes" in st.session_state:
+        frames.append(_codes_and_names_from_bytes(st.session_state["monthly_bytes"]))
+
+    if not frames:
+        return [], {}
+
+    df = pd.concat(frames, ignore_index=True)
+    df = (df.sort_values(["Provider_Code", "Provider_Name"], ascending=[True, True])
+            .groupby("Provider_Code", as_index=False)
+            .agg(Provider_Name=("Provider_Name", "first")))
+
+    labels, label_to_code = [], {}
+    for _, r in df.iterrows():
+        code = (r["Provider_Code"] or "").strip()
+        name = (r["Provider_Name"] or "").strip()
+        label = f"{code} — {name}" if name else code
+        labels.append(label)
+        label_to_code[label] = code
+    return labels, label_to_code
+
+
 # --- Global, persistent uploaders (Homepage sidebar) ---
 with st.sidebar:
     st.header("📥 Upload data files")
@@ -298,21 +385,56 @@ with st.sidebar:
             st.session_state.pop("monthly_bytes", None)
             st.session_state.pop("monthly_name",  None)
             st.rerun()
+            
+    st.markdown("---")
+    st.subheader("🎯 Default provider")
+
+    labels, label_to_code = _build_provider_labels_and_map()
+
+    if labels:
+        # Preselect currently remembered code if present
+        current_code = st.session_state.get("shared_provider_code")
+        if current_code:
+            try:
+                default_idx = next(i for i, lab in enumerate(labels) if label_to_code[lab] == current_code)
+            except StopIteration:
+                default_idx = 0
+        else:
+            default_idx = 0
+
+        chosen_label = st.selectbox(
+            "Set the default provider for the app",
+            labels,
+            index=default_idx,
+            key="home_default_provider_select",
+            help="This applies across all pages. You can still change it on each page."
+        )
+
+        # Persist only the CODE for cross-page use
+        st.session_state["shared_provider_code"] = label_to_code[chosen_label]
+
+        # Optional: quick clear
+        if st.button("Clear default", key="home_clear_default_provider"):
+            st.session_state.pop("shared_provider_code", None)
+            st.rerun()
+    else:
+        st.caption("Upload a Monthly or Quarterly CSV to set a default provider.")
 
 
 # ---------- PAGE CONTENT ----------
-st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
-
-# Header
+# Header (moved OUTSIDE the page-wrap for consistent alignment)
 st.markdown(
     f"""
     <div class="app-header" role="banner" aria-label="Header">
       <div class="app-logo" aria-hidden="true">{logo_svg}</div>
       <h1 id="page-title">NOF Rankings App</h1>
     </div>
-    """,
-    unsafe_allow_html=True,
+    """, unsafe_allow_html=True,
 )
+
+# Now open the optional content wrapper
+st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
+
 
 # Subtitle in a rounded yellow callout
 st.markdown(

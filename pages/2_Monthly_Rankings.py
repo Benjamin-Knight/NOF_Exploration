@@ -20,6 +20,9 @@ import streamlit as st
 import html as _html
 from pathlib import Path
 
+# add (or keep) this import in the file header
+from decimal import Decimal, ROUND_HALF_UP
+
 # -------------------------- Page setup ----------------------------
 st.set_page_config(
     page_title="NOF Monthly Rankings",   # or Quarterly
@@ -112,6 +115,31 @@ def to_float(x: str) -> float:
     x = x.replace(",", ".")
     x = re.sub(r"[^\d\.\-]", "", x)
     return pd.to_numeric(x, errors="coerce")
+
+def format_percent_display(value, metric_name: str) -> str:
+    """Match Quarterly: 2dp only for '52+ weeks', else 1dp; '—' if NaN."""
+    import pandas as pd
+    if pd.isna(value):
+        return "—"
+    return f"{value:.2f}%" if str(metric_name).strip().lower() == "52+ weeks" else f"{value:.1f}%"
+
+def format_whole_round(x) -> str:
+    """Quarterly-style integer with true half-up rounding + thousands separators."""
+    import pandas as pd
+    if pd.isna(x): return "—"
+    try:
+        q = Decimal(str(float(x))).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return f"{int(q):,}"
+    except Exception:
+        return "—"
+
+def format_region_rank(rank_val, size_val) -> str:
+    """e.g., '3 out of 19' or '—' if missing."""
+    import pandas as pd
+    if pd.isna(rank_val) or pd.isna(size_val):
+        return "—"
+    return f"{int(rank_val)} out of {int(size_val)}"
+
 
 @st.cache_data(show_spinner=False)
 def load_monthly_csv(file_bytes: bytes) -> pd.DataFrame:
@@ -558,22 +586,34 @@ with left:
     bars_df = bars_df.dropna(subset=["Percent","Rank"])
     bars_df = bars_df.sort_values(["Rank","Percent","Provider_Name"], ascending=[True, False, True]).copy()
     bars_df["Is_Selected"] = bars_df["Provider_Code"].eq(provider_code) if provider_code else False
+    
+    # Pre-format labels to match Quarterly’s hover
+    bars_df["PercentLabel"]     = bars_df.apply(lambda r: format_percent_display(r["Percent"], r["Metric"]), axis=1)
+    bars_df["NumLabel"]         = bars_df["Numerator"].map(format_whole_round)
+    bars_df["DenLabel"]         = bars_df["Denominator"].map(format_whole_round)
+    bars_df["RegionRankLabel"]  = bars_df.apply(lambda r: format_region_rank(r["Rank_Region"], r["Region_Size"]), axis=1)
 
     bars_df = bars_df.drop_duplicates(subset=["Provider_Code"])
 
     fig = px.bar(bars_df, x="Provider_Code", y="Percent", title="Provider Performance (% Value) — ordered by Rank (1 at left)")
     fig.update_traces(
-        marker_color=bars_df["Is_Selected"].map({True:NHS_YELLOW, False:BAR_GREY}),
-        customdata=bars_df[["Provider_Code","Provider_Name","Region","Numerator","Denominator","Percent","Rank"]].values,
+        marker_color=bars_df["Is_Selected"].map({True: NHS_YELLOW, False: BAR_GREY}),
+        customdata=bars_df[[
+            "Provider_Code", "Provider_Name", "Region",
+            "NumLabel", "DenLabel", "PercentLabel",
+            "Rank", "RegionRankLabel"
+        ]].values,
         hovertemplate=(
             "<b>%{customdata[0]}</b> — %{customdata[1]}<br>"
             "Region: %{customdata[2]}<br>"
-            "Numerator: %{customdata[3]:,}<br>"
-            "Denominator: %{customdata[4]:,}<br>"
-            "% Value: %{customdata[5]:.1f}%<br>"
-            "Rank: %{customdata[6]:,}<extra></extra>"
+            "Numerator: %{customdata[3]}<br>"
+            "Denominator: %{customdata[4]}<br>"
+            "% Value: %{customdata[5]}<br>"
+            "Rank: %{customdata[6]}<br>"
+            "Region rank: %{customdata[7]}<extra></extra>"
         ),
     )
+
     fig.update_layout(
         template="simple_white", height=420, margin=dict(l=10,r=10,t=50,b=10),
         xaxis_title="Providers", xaxis_showticklabels=False,

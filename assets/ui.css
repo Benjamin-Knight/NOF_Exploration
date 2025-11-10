@@ -10,6 +10,7 @@
   --panel-top: 72px;              /* sticky offset for RHS panel */
   --page-gutter: 16px;            /* << one knob for left/right page padding */
   --banner-xpad: 12px;            /* inner left/right padding inside banners */
+  --header-to-banner-gap: 16px;   /* tweak here if you ever want more/less */
 
   /* Brand palette */
   --brand-teal:   #05857c;
@@ -82,6 +83,19 @@ section.main > div.block-container{
 }
 #page-title{ margin:0; line-height:1.2; font-weight:800; color:#111827; }
 @media (prefers-color-scheme: dark){ #page-title{ color:#E5E7EB; } }
+
+[data-testid="stMarkdown"]:has(.app-header){ 
+  margin-bottom: 0 !important;            /* kill wrapper's extra bottom gap under the header */
+}
+.app-header + [data-testid="stMarkdown"]{
+  margin-top: 0 !important;               /* kill wrapper's extra top gap before the banner */
+}
+
+/* Force a single top margin on the banner when it comes right after the header */
+.app-header + [data-testid="stMarkdown"] #context-banner,
+.app-header + [data-testid="stMarkdown"] .info-banner{
+  margin-top: var(--header-to-banner-gap) !important;
+}
 
 /* ---------- Context banner (blue pill) ---------- */
 #context-banner{

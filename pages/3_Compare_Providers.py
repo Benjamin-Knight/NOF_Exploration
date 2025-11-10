@@ -14,6 +14,9 @@ import plotly.graph_objects as go
 import streamlit as st
 import re
 
+# add (or keep) this import in the file header
+from decimal import Decimal, ROUND_HALF_UP
+
 # ===================== Page config ======================
 st.set_page_config(page_title="NOF Compare Providers", page_icon="🆚", layout="wide")
 
@@ -34,16 +37,6 @@ use_ui_css()
 
 # -------- Empty state for Compare Providers (shows in main pane) --------
 def render_compare_empty_state():
-    # Header
-    st.markdown(
-        f"""
-        <div class="app-header" role="banner" aria-label="Header">
-          <div class="app-logo" aria-hidden="true">{logo_svg}</div>
-          <h1 id="page-title">NOF Compare Providers</h1>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     # Context banner
     st.markdown(
@@ -362,6 +355,31 @@ def ensure_percent(df: pd.DataFrame) -> pd.DataFrame:
     df["Percent"] = p
     return df
 
+def format_percent_display(value, metric_name: str) -> str:
+    """Match Quarterly: 2dp only for '52+ weeks', else 1dp; '—' if NaN."""
+    import pandas as pd
+    if pd.isna(value):
+        return "—"
+    return f"{value:.2f}%" if str(metric_name).strip().lower() == "52+ weeks" else f"{value:.1f}%"
+
+def format_whole_round(x) -> str:
+    """Quarterly-style integer with true half-up rounding + thousands separators."""
+    import pandas as pd
+    if pd.isna(x): return "—"
+    try:
+        q = Decimal(str(float(x))).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return f"{int(q):,}"
+    except Exception:
+        return "—"
+
+def format_region_rank(rank_val, size_val) -> str:
+    """e.g., '3 out of 19' or '—' if missing."""
+    import pandas as pd
+    if pd.isna(rank_val) or pd.isna(size_val):
+        return "—"
+    return f"{int(rank_val)} out of {int(size_val)}"
+
+
 def get_region_for_provider(code: str | None, lookup_df: pd.DataFrame) -> str | None:
     """Return the first Region for a provider code from the lookup_df (scope0)."""
     if not code or "Region" not in lookup_df.columns or "Provider_Code" not in lookup_df.columns:
@@ -638,9 +656,18 @@ if mode == "Monthly":
     
     labels = provider_labels(scope)
 
-    # Bring forward previously chosen labels even if they’re not in current metric list
+    # Defaults from page memory
     prevL = remembered("cmp_m_left",  labels[0] if labels else "(None)")
     prevR = remembered("cmp_m_right", labels[1] if len(labels) > 1 else "(None)")
+
+    # NEW: if a shared provider exists, prefer it for Provider A
+    shared_code = st.session_state.get("shared_provider_code") if REMEMBER else None
+    if shared_code:
+        shared_label = next((lbl for lbl in labels if extract_code(lbl) == shared_code), None)
+        if shared_label:
+            prevL = shared_label
+
+    # Build options bringing forward any previous picks
     prov_options = with_previous(labels, prevL, prevR)
 
     colL = st.sidebar.selectbox(
@@ -712,6 +739,14 @@ else:
 
     prevL = remembered("cmp_q_left",  labels[0] if labels else "(None)")
     prevR = remembered("cmp_q_right", labels[1] if len(labels) > 1 else "(None)")
+    
+    # NEW: if a shared provider exists, prefer it for Provider A (Quarterly mode)
+    shared_code = st.session_state.get("shared_provider_code") if REMEMBER else None
+    if shared_code:
+        shared_label = next((lbl for lbl in labels if extract_code(lbl) == shared_code), None)
+        if shared_label:
+            prevL = shared_label
+    
     prov_options = with_previous(labels, prevL, prevR)
 
     colL = st.sidebar.selectbox(
@@ -749,6 +784,10 @@ else:
         f"Comparing <b>{html.escape(domain)}</b> → <b>{html.escape(metric)}</b> in <b>{html.escape(quarter)}</b>"
         + (f" for <b>{html.escape(region_selected)}</b>" if region_selected else " across <b>all regions</b>")
     )
+
+# ------------------------------------------------------------------
+
+st.markdown('<div class="page-wrap">', unsafe_allow_html=True)
 
 # --------------------------- Header -------------------------------
 st.markdown(
@@ -850,13 +889,34 @@ bars["IsB"] = bars["Provider_Code"].eq(provB) if provB else False
 dist_title = "Distribution — selected " + ("month" if mode == "Monthly" else "quarter")
 st.markdown(f"##### {html.escape(str(metric))}  {dist_title}")   # << same size as the trend title
 
+# Pre-format labels for hover to match Quarterly
+bars["PercentLabel"]     = bars.apply(lambda r: format_percent_display(r["Percent"], r["Metric"]), axis=1)
+bars["NumLabel"]         = bars["Numerator"].map(format_whole_round)
+bars["DenLabel"]         = bars["Denominator"].map(format_whole_round)
+bars["RegionRankLabel"]  = bars.apply(lambda r: format_region_rank(r["Rank_Region"], r["Region_Size"]), axis=1)
+
 pxfig = px.bar(
     bars, x="Provider_Code", y="Percent",
     title=None
 )
+
 pxfig.update_traces(
     marker_color=np.where(bars["IsA"], A_COLOR,
-                   np.where(bars["IsB"], B_COLOR, OTHERS_BAR))
+                   np.where(bars["IsB"], B_COLOR, OTHERS_BAR)),
+    customdata=bars[[
+        "Provider_Code", "Provider_Name", "Region",
+        "NumLabel", "DenLabel", "PercentLabel",
+        "Rank", "RegionRankLabel"
+    ]].values,
+    hovertemplate=(
+        "<b>%{customdata[0]}</b> — %{customdata[1]}<br>"
+        "Region: %{customdata[2]}<br>"
+        "Numerator: %{customdata[3]}<br>"
+        "Denominator: %{customdata[4]}<br>"
+        "% Value: %{customdata[5]}<br>"
+        "Rank: %{customdata[6]}<br>"
+        "Region rank: %{customdata[7]}<extra></extra>"
+    ),
 )
 
 pxfig.update_layout(
@@ -865,7 +925,7 @@ pxfig.update_layout(
     yaxis_title=None,
     yaxis_ticksuffix="%",
     xaxis_showticklabels=False,
-    height=320,
+    height=410,
     margin=dict(l=10, r=10, t=6, b=10)
 )
 # remove x-axis baseline to match your bar style elsewhere

@@ -920,6 +920,8 @@ def read_svg_file(p: Path) -> str:
 
 logo_svg = read_svg_file(LOGO_FILE) if LOGO_FILE else ""
 
+# ===================== Header ======================
+
 st.markdown(
     f"""
     <div class="app-header" role="banner" aria-label="Header">
