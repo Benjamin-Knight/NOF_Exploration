@@ -17,7 +17,7 @@ st.set_page_config(
 # --- App meta (edit these) ---
 DEV_NAME    = "David M. Oladoyin"
 DEV_EMAIL   = "david.oladoyin@nhs.net"
-APP_VERSION = "5.0"
+APP_VERSION = "6.0"
 
 # ---------- Assets ----------
 ROOT_ASSETS  = Path(__file__).parents[1] / "assets"
@@ -483,6 +483,17 @@ with col2:
 Monthly view with KPIs, **rank deltas** vs previous month, 12-month trends, and Region vs National comparisons."""
     if st.button(m_btn, key="monthly_btn", use_container_width=True):
         st.switch_page("pages/2_Monthly_Rankings.py")
+        
+    # Small spacer between stacked buttons
+    st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+
+    # --- Compare Providers (under Quarterly)
+    fg_btn = """
+**Foundation Group**
+
+A Foundation level overview across **Monthly** or **Quarterly** data with KPIs, distribution, and domain cards."""
+    if st.button(fg_btn, key="foundation_group_btn", use_container_width=True):
+        st.switch_page("pages/4_Foundation_Group.py")
 
 
 footer_html = f"""

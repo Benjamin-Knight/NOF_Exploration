@@ -97,6 +97,22 @@ section.main > div.block-container{
   margin-top: var(--header-to-banner-gap) !important;
 }
 
+/* ---- Section divider (no vertical space) ---- */
+.section-sep{
+  border: 0;
+  border-top: 1px solid #E5E7EB; /* light grey line */
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0;           /* no extra height */
+  line-height: 0;      /* collapse line-height */
+}
+
+/* Remove any container spacing around the hr */
+.no-gap{
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* ---------- Context banner (blue pill) ---------- */
 #context-banner{
   display:block; width:100%; box-sizing:border-box;
@@ -123,6 +139,21 @@ section.main > div.block-container{
 .info-row { 
   padding: 0 var(--page-gutter);
   margin-top: 6px; 
+}
+
+/* ---- Full-bleed utility (edge-to-edge section) ---- */
+.full-bleed{
+  width: 100vw;                                /* escape Streamlit container */
+  margin-left:  calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding-left:  var(--page-gutter);           /* keep your page gutter */
+  padding-right: var(--page-gutter);
+  box-sizing: border-box;
+}
+/* Remove any wrapper padding Streamlit adds around this block */
+[data-testid="stMarkdown"]:has(.full-bleed){
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 /* support both pages: id (#context-banner) and class (.info-banner) */
@@ -615,6 +646,47 @@ h2.kpi-heading{ margin-top: 2px !important; }
 .compare-summary-panel {
   min-height: 200px;  /* Adjust this value as needed */
   padding:20px 24px 20px 24px;
+}
+
+/* === Metric cards (Metrics within domain) === */
+.metric-grid{ display:grid; gap:12px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media (min-width:1200px){ .metric-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+
+.metric-card{
+  background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:12px;
+  padding:14px 18px; box-shadow:0 1px 2px rgba(0,0,0,.03);
+}
+.metric-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+.metric-title{ font-weight:600; color:#111827; }
+.metric-value{ font-weight:700; }
+
+.metric-meter{ height:8px; background: rgba(12,152,143,.15); border-radius:9999px; overflow:hidden; }
+.metric-fill{ height:100%; border-radius:9999px; background: var(--brand-teal, #0C988F);  /* ← new: visible fill color */}
+
+.metric-footer{ margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; }
+.metric-chip{
+  font-size:12px; background: rgba(12,152,143,.10); color:#02615b; border-radius:9999px; padding:2px 8px;
+}
+
+/* kill extra wrapper margins around the grid block */
+[data-testid="stMarkdown"]:has(.metric-grid){ margin:0 !important; padding:0 !important; }
+
+/* === Uniform section titles (match Compare) === */
+.section-title, .chart-title, .kpi-heading, .metrics-title{
+  font-size: 1.15rem;           /* keep this in sync with Compare */
+  font-weight: 700;
+  color:#111827;
+  margin: 4px 0 6px !important; /* tight & consistent */
+  line-height: 1.25;
+}
+
+/* remove wrapper gaps before/after these headings */
+[data-testid="stMarkdown"] :is(h2,h3).section-title,
+[data-testid="stMarkdown"] :is(h2,h3).chart-title,
+[data-testid="stMarkdown"] :is(h2,h3).kpi-heading,
+[data-testid="stMarkdown"] :is(h2,h3).metrics-title{
+  margin-top: 4px !important;
+  margin-bottom: 6px !important;
 }
 
 /* ---------- Small utilities shared by both ---------- */
