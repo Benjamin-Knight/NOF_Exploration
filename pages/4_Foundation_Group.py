@@ -438,7 +438,7 @@ _hydrate_fg_from_memory()
 # ---------------- Sidebar (only when data exists) -------------------------
 if has_data:
     with st.sidebar:
-        st.markdown("### Foundation Group")
+        #st.markdown("### Foundation Group")
         _ensure_choice("fg_freq", ["Monthly", "Quarterly"], fallback="Monthly")
         freq = st.radio(
             "Frequency",
