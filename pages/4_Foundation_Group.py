@@ -207,12 +207,28 @@ def _save_filters_to_url():
         if v not in (None, "", []):
             params[k] = v
 
-    # Serialize multiselect as a single string for cross-version safety
+    # Multiselect serialisation
     grp = st.session_state.get("fg_group", [])
     if grp:
-        params["group"] = "|".join(grp)   # ← WAS: list; NOW: pipe-joined string
+        params["group"] = "|".join(grp)
+    else:
+        # Explicitly remove 'group' from the URL if selection is empty
+        try:
+            if "group" in st.query_params:
+                del st.query_params["group"]
+        except Exception:
+            current = st.experimental_get_query_params()
+            if "group" in current:
+                current.pop("group", None)
+                st.experimental_set_query_params(**current)
 
-    _set_query_params(params)             # merges safely
+    # Merge the rest (preserves other keys incl. 'page')
+    _set_query_params(params)
+
+    # Keep a private memory copy (so empty stays empty)
+    st.session_state["_fg_memory"] = {
+        k: st.session_state.get(f"fg_{k}") for k in FG_KEYS
+    }
 
 def _save_fg_everywhere():
     # write to URL + keep a private memory copy
@@ -422,6 +438,10 @@ for k in ("freq", "domain", "metric", "region", "month", "quarter"):
         st.session_state[f"fg_{k}"] = v
 
 grp = qp.get("group")
+# 👇 Ignore empty strings just in case
+if isinstance(grp, str) and not grp.strip():
+    grp = None
+
 if grp:
     # Accept either legacy list (old API) or pipe-joined string (new API)
     if isinstance(grp, list):
@@ -429,6 +449,7 @@ if grp:
     else:
         gvals = str(grp).split("|")
     st.session_state["fg_group"] = gvals
+
 
 # Re-hydrate previously saved picks on every rerun (no "loaded" flag)
 _hydrate_fg_from_memory()
@@ -519,13 +540,29 @@ else:
         )
     period = quarter
 
-# Providers
+# Providers (with sensible defaults)
 providers_base = df if region == "(All Regions)" else df[df["region"] == region]
 labels_df = _codes_and_names(providers_base)
 labels = [_label(r.provider_code, r.provider_name) for _, r in labels_df.iterrows()]
 code_by_label = {lab: labels_df.iloc[i]["provider_code"] for i, lab in enumerate(labels)}
 
+# NEW: preselect 4 providers on first load (respect URL/session memory)
+DEFAULT_CODES = ["RJC", "RLQ", "RLT", "RWP"]
+
+# ⬇️ Only seed if the key does not exist at all (first load)
+if "fg_group" not in st.session_state:
+    code_to_label = {
+        r.provider_code: _label(r.provider_code, r.provider_name)
+        for _, r in labels_df.iterrows()
+    }
+    defaults = [code_to_label[c] for c in DEFAULT_CODES if c in code_to_label]
+    if defaults:
+        st.session_state["fg_group"] = defaults[:5]
+        _save_fg_everywhere()
+
+# keep your “clamp to options” behaviour
 _persist_multiselect("fg_group", labels, limit=5)
+
 with st.sidebar:
     st.caption("Select up to 5 providers (only for this page).")
     st.multiselect(
@@ -534,6 +571,7 @@ with st.sidebar:
         key="fg_group",
         on_change=_save_fg_everywhere
     )
+
 
 _save_fg_everywhere()
 
