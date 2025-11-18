@@ -208,6 +208,16 @@ def format_region_rank(rank_val, size_val) -> str:
         return "—"
     return f"{int(rank_val)} out of {int(size_val)}"
 
+def format_overall_rank_text(rank_val, nat_total) -> str:
+    """Plain text: '12 out of 136' or '—' if missing."""
+    if pd.isna(rank_val) or not nat_total:
+        return "—"
+    return f"{int(rank_val)} out of {int(nat_total)}"
+
+def format_overall_rank_html(rank_val, nat_total) -> str:
+    if pd.isna(rank_val) or not nat_total:
+        return "—"
+    return f"{int(rank_val)}<span class='muted'> out of {int(nat_total)}</span>"
 
 def provider_options(df_filtered: pd.DataFrame) -> list:
     tmp = df_filtered[[PROV_CODE, PROV_NAME]].drop_duplicates().sort_values(PROV_CODE)
@@ -313,7 +323,10 @@ def render_metric_rank_panel(
 
         # clamp width 0–100 for safety
         width = max(0.0, min(100.0, pct_val))
-        nat_label = f"{rank_disp} (Nat.)" if rank_disp != "—" else "—"
+        # National denominator for *this metric* in the current quarter+domain
+        nat_n = scope[scope[METRIC] == m][PROV_CODE].nunique()
+        nat_label = format_overall_rank_text(rr[RANK] if not r.empty else pd.NA, nat_n)
+
         reg_label = f"Regional Rank: {reg_rank}" if reg_rank != "—" else "Regional Rank: —"
 
         card_html = (
@@ -756,6 +769,11 @@ def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: 
 
     st.markdown("</div>", unsafe_allow_html=True)  # close .info-row.empty-grid
 
+def format_overall_rank(rank_val, nat_total) -> str:
+    """e.g., '12 out of 136' or '—' if missing."""
+    if pd.isna(rank_val) or not nat_total:
+        return "—"
+    return f"{int(rank_val)}<span class='muted'> out of {int(nat_total)}</span>"
 
 # ------------------------ End of def -----------------------------
 
@@ -952,12 +970,16 @@ if provider_code:
     row = df_qdmr.loc[df_qdmr[PROV_CODE] == provider_code]
     if not row.empty:
         r = row.iloc[0]
-        rank_disp = "—" if pd.isna(r[RANK]) else f"{int(r[RANK]):,}"
+        # (A) Overall rank as "X out of Y" using the helper
+        # ---- Overall rank as "X out of Y" (plain text) ----
+        nat_n = df_qdm[PROV_CODE].nunique()  # national size for this Quarter+Domain+Metric
+        overall_text = format_overall_rank_html(r[RANK], nat_n)
 
-        # Region rank parts: bold number + grey "out of N"
-        region_rank_label = "—" if pd.isna(r[RANK_REGION]) else f"{int(r[RANK_REGION])}"
-        region_rank_tail  = ""  if pd.isna(r[REGION_SIZE]) else f"<span class='muted'> out of {int(r[REGION_SIZE])}</span>"
-        region_rank_html  = f"{region_rank_label}{region_rank_tail}"
+        # ---- Region rank "X out of Y" (plain text) ----
+        region_rank_text = (
+            "—" if pd.isna(r[RANK_REGION]) or pd.isna(r[REGION_SIZE])
+            else f"{int(r[RANK_REGION])} out of {int(r[REGION_SIZE])}"
+        )
 
         num_disp = format_whole_round(r[NUM])
         den_disp = format_whole_round(r[DEN])
@@ -966,12 +988,13 @@ if provider_code:
 
         # Order: Rank → Region Rank → Numerator → Denominator → % Value → Covered_Months
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        with c1: kpi_card("Rank", rank_disp)
-        with c2: kpi_card("Region Rank", region_rank_html)     # <-- now grey tail
-        with c3: kpi_card("Numerator", num_disp)
-        with c4: kpi_card("Denominator", den_disp)
-        with c5: kpi_card("% Value", pct_disp)
+        with c1: kpi_card("Overall Rank", overall_text)        # ← title AND new value
+        with c2: kpi_card("Region Rank",  region_rank_text)
+        with c3: kpi_card("Numerator",    num_disp)
+        with c4: kpi_card("Denominator",  den_disp)
+        with c5: kpi_card("% Value",      pct_disp)
         with c6: kpi_card("Covered_Months", cov_disp)
+
     else:
         st.warning("No data for the selected provider under the current Metric/Region.")
 

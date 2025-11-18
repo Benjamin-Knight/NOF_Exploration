@@ -149,6 +149,12 @@ def format_region_rank(rank_val, size_val) -> str:
     if pd.isna(rank_val) or pd.isna(size_val): return "—"
     return f"{int(rank_val)} out of {int(size_val)}"
 
+def format_overall_rank(rank_val, nat_total) -> str:
+    """Overall rank as 'X out of Y' (— if missing)."""
+    if pd.isna(rank_val) or not nat_total:
+        return "—"
+    return f"{int(rank_val)} out of {int(nat_total)}"
+
 def short_label(code: str, name: str, n_words: int = 3) -> str:
     words = (name or "").split()
     short = " ".join(words[:n_words]).strip()
@@ -267,7 +273,7 @@ def _persist_multiselect(key: str, options: list, limit: int = 5):
     return cur
 # ---------------------------------------------------------------------------
 
-def build_kpi_table(df_slice: pd.DataFrame, codes: list[str], metric) -> pd.DataFrame:
+def build_kpi_table(df_slice: pd.DataFrame, codes: list[str], metric, nat_total: int | None) -> pd.DataFrame:
     rows = []
     order = df_slice.set_index("provider_code")["rank"] if "rank" in df_slice else None
     codes_sorted = sorted(codes, key=lambda c: order.get(c, 1e9)) if order is not None else codes
@@ -287,7 +293,7 @@ def build_kpi_table(df_slice: pd.DataFrame, codes: list[str], metric) -> pd.Data
 
         rows.append({
             "Provider":     _label(r["provider_code"], r["provider_name"]),
-            "Overall Rank": "—" if pd.isna(rank_val) else f"{int(rank_val)}",
+            "Overall Rank": format_overall_rank(rank_val, nat_total),
             "Region Rank":  format_region_rank(rank_region, region_size),
             "% Value":      format_percent_display(percent_val, metric),
             "Numerator":    format_whole_round(numerator_val),
@@ -641,7 +647,15 @@ st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 # ========================= KPI Table ======================================
 if has_rows:
     st.markdown(f"##### KPIs — {_metric_title} (selected providers)", unsafe_allow_html=True)
-    kpi_df = build_kpi_table(scoped, selected_codes, metric) if selected_codes else pd.DataFrame(
+    # National scope for Y (ignore Region; same Domain + Metric + Period)
+    nat_scope = df[
+        (df["domain"] == domain) &
+        (df["metric"] == metric) &
+        (df[period_col] == period)
+    ]
+    nat_total = nat_scope["provider_code"].nunique()
+
+    kpi_df = build_kpi_table(scoped, selected_codes, metric, nat_total) if selected_codes else pd.DataFrame(
         columns=["Provider","Overall Rank","Region Rank","% Value","Numerator","Denominator"]
     )
 
@@ -745,172 +759,186 @@ st.markdown("<div class='no-gap'><hr class='section-sep'></div>", unsafe_allow_h
 
 # =========================== Trend Chart ==================================
 
-st.markdown(
-    f"##### Trend — {html.escape(str(metric))} "
-    f"({'last 24 months' if freq=='Monthly' else 'last 8 quarters'})",
-    unsafe_allow_html=True
-)
-fig_line = px.line(height=400)
-HOVER_TMPL = "<b>%{fullData.name}</b><br>%{customdata[0]}<extra></extra>"
+# === Trend (left) + Metrics within domain (right) ===
 
-if freq == "Monthly":
-    dm = df[(df["domain"] == domain) & (df["metric"] == metric)].copy()
-    dm = dm.sort_values("month_dt").drop_duplicates(subset=["month_dt", "provider_code"], keep="last")
-    latest = dm["month_dt"].max()
-    months24 = (
-        dm[["month_dt"]].drop_duplicates().sort_values("month_dt")["month_dt"]
+left, right = st.columns([2.1, 1.9], gap="medium")  # match Compare Providers
+
+with left:
+    # ---- Title for the trend chart (same wording as other pages)
+    st.markdown(
+        f"##### Trend — {html.escape(str(metric))} "
+        f"({'last 24 months' if freq=='Monthly' else 'last 8 quarters'})",
+        unsafe_allow_html=True
     )
-    months24 = months24[months24 <= latest].tail(24).tolist()
 
-    for i, code in enumerate(selected_codes):
-        s = dm[dm["provider_code"] == code].sort_values("month_dt")
-        if s.empty:
-            continue
-        s["PercentLabel"] = s.apply(lambda r: format_percent_display(r["percent"], r["metric"]), axis=1)
+    import plotly.graph_objects as go
+    fig_line = go.Figure()
+    HOVER_TMPL = "<b>%{fullData.name}</b><br>%{customdata[0]}<extra></extra>"
 
-        fig_line.add_scatter(
-            x=s["month_dt"], y=s["percent"],
-            mode="lines+markers",
-            name=short_label(code, s["provider_name"].iloc[0] if "provider_name" in s.columns else "", 3),
-            line=dict(width=2, color=colour_by_code.get(code, PALETTE[i % len(PALETTE)])),
-            marker=dict(size=6),
-            customdata=s[["PercentLabel"]].values,
-            hovertemplate=HOVER_TMPL,
-        )
+    if freq == "Monthly":
+        dm = df[(df["domain"] == domain) & (df["metric"] == metric)].copy()
+        dm = dm.sort_values("month_dt").drop_duplicates(subset=["month_dt", "provider_code"], keep="last")
+        latest = dm["month_dt"].max()
+        months24 = dm[["month_dt"]].drop_duplicates().sort_values("month_dt")["month_dt"]
+        months24 = months24[months24 <= latest].tail(24).tolist()
 
-    def add_weighted(frame: pd.DataFrame, name: str, dash: str):
-        xs, ys = [], []
-        for mdt in months24:
-            xs.append(mdt)
-            ys.append(weighted_percentage(frame[frame["month_dt"] == mdt]))
-        fig_line.add_scatter(
-            x=xs, y=ys, name=name, mode="lines",
-            line=dict(width=2, dash=dash, color=REG_LINE if dash == "dash" else NAT_LINE),
-            customdata=[[format_percent_display(y, metric)] for y in ys],
-            hovertemplate=HOVER_TMPL,
-        )
-
-    if region != "(All Regions)":
-        add_weighted(dm[dm["region"] == region], f"{region} (weighted)", "dash")
-    add_weighted(dm, "National (weighted)", "dot")
-
-    fig_line.update_xaxes(title="Month", tickformat="%b-%y")
-
-else:
-    dq = df[(df["domain"] == domain) & (df["metric"] == metric)].copy()
-    order = pd.Categorical(dq["quarter"], categories=pd.unique(dq["quarter"]), ordered=True)
-    dq["quarter"] = order
-    last8 = list(order.categories)[-8:]
-    dq8 = dq[dq["quarter"].isin(last8)]
-
-    for i, code in enumerate(selected_codes):
-        s = dq8[dq8["provider_code"] == code].copy()
-        if s.empty:
-            continue
-        s["PercentLabel"] = s.apply(lambda r: format_percent_display(r["percent"], r["metric"]), axis=1)
-        fig_line.add_scatter(
-            x=s["quarter"].astype(str), y=s["percent"],
-            mode="lines+markers",
-            name=short_label(code, s["provider_name"].iloc[0] if "provider_name" in s.columns else "", 3),
-            line=dict(width=2, color=colour_by_code.get(code, PALETTE[i % len(PALETTE)])),
-            marker=dict(size=6),
-            customdata=s[["PercentLabel"]].values,
-            hovertemplate=HOVER_TMPL,
-        )
-
-    def add_weighted_q(frame: pd.DataFrame, name: str, dash: str):
-        xs, ys = [], []
-        for q in last8:
-            xs.append(str(q))
-            ys.append(weighted_percentage(frame[frame["quarter"] == q]))
-        fig_line.add_scatter(
-            x=xs, y=ys, name=name, mode="lines",
-            line=dict(width=2, dash=dash, color=REG_LINE if dash == "dash" else NAT_LINE),
-            customdata=[[format_percent_display(y, metric)] for y in ys],
-            hovertemplate=HOVER_TMPL,
-        )
-
-    if region != "(All Regions)":
-        add_weighted_q(dq8[dq8["region"] == region], f"{region} (weighted)", "dash")
-    add_weighted_q(dq8, "National (weighted)", "dot")
-
-    fig_line.update_xaxes(title="Quarter")
-
-fig_line.update_layout(
-    hovermode="x unified",
-    showlegend=False,
-    xaxis_title=None,
-    yaxis_title=None,
-    margin=dict(l=10, r=10, t=10, b=10),
-)
-
-fig_line.update_yaxes(ticksuffix="%")
-if freq == "Monthly":
-    fig_line.update_xaxes(tickformat="%b-%y")
-
-st.plotly_chart(fig_line, use_container_width=True, config={"displaylogo": False})
-st.markdown("<div class='no-gap'><hr class='section-sep'></div>", unsafe_allow_html=True)
-
-
-# ========================== Metrics within domain ==============================
-st.markdown(f"##### Metrics within domain — {html.escape(str(domain))} ({_freq_label})", unsafe_allow_html=True)
-
-if selected_codes:
-    name_by_code = {r.provider_code: r.provider_name for _, r in labels_df.iterrows()}
-    tabs = st.tabs([short_label(c, name_by_code.get(c, ""), 3) for c in selected_codes])
-
-    for i, code in enumerate(selected_codes):
-        with tabs[i]:
-            tbl = df[(df[period_col]==period) & (df["domain"]==domain)]
-            if region != "(All Regions)":
-                tbl = tbl[tbl["region"]==region]
-            tbl = tbl[tbl["provider_code"]==code][
-                ["metric","percent","rank","rank_region","region_size","numerator","denominator"]
-            ].copy().sort_values("metric")
-
-            if tbl.empty:
-                st.caption("No rows under current filters.")
+        # provider series
+        for i, code in enumerate(selected_codes):
+            s = dm[dm["provider_code"] == code].sort_values("month_dt")
+            if s.empty:
                 continue
-
-            # Build HTML cards (safe + compact)
-            cards_html = []
-            for _, r in tbl.iterrows():
-                # % width for the meter (0–100), safe even if your CSV is 0–1 or already 0–100
-                pct = pd.to_numeric(r["percent"], errors="coerce")
-                width = "0%" if pd.isna(pct) else f"{np.clip(float(pct), 0.0, 100.0):.1f}%"
-
-                title      = html.escape(str(r["metric"]))  # ← prevent stray markup
-                pct_label  = format_percent_display(r["percent"], r["metric"])
-                reg_label  = format_region_rank(r["rank_region"], r["region_size"])
-                num_label  = format_whole_round(r["numerator"])
-                den_label  = format_whole_round(r["denominator"])
-                overall    = "—" if pd.isna(r["rank"]) else int(r["rank"])
-
-                cards_html.append(
-                    f"""
-                    <div class="metric-card">
-                    <div class="metric-top">
-                        <div class="metric-title">{title}</div>
-                        <div class="metric-value">{pct_label}</div>
-                    </div>
-                    <div class="metric-meter" aria-hidden="true">
-                        <div class="metric-fill" style="width:{width}"></div>
-                    </div>
-                    <div class="metric-footer">
-                        <span class="metric-chip">Overall Rank: {overall}</span>
-                        <span class="metric-chip">Region: {reg_label}</span>
-                        <span class="metric-chip">Num: {num_label}</span>
-                        <span class="metric-chip">Den: {den_label}</span>
-                    </div>
-                    </div>
-                    """.strip()
-                )
-
-            # Render one horizontal row of cards
-            st.markdown(
-                "<div class='metric-grid'>" + "".join(cards_html) + "</div>",
-                unsafe_allow_html=True
+            s["PercentLabel"] = s.apply(lambda r: format_percent_display(r["percent"], r["metric"]), axis=1)
+            fig_line.add_scatter(
+                x=s["month_dt"], y=s["percent"],
+                mode="lines+markers",
+                name=short_label(code, s["provider_name"].iloc[0] if "provider_name" in s.columns else "", 3),
+                line=dict(width=3, color=colour_by_code.get(code, PALETTE[i % len(PALETTE)])),
+                marker=dict(size=6, line=dict(width=1, color="#FFFFFF")),
+                customdata=s[["PercentLabel"]].values,
+                hovertemplate=HOVER_TMPL,
             )
 
-else:
-    st.caption("Select providers in the sidebar to view per-provider metrics.")
+        # region / national weighted
+        def _add_weighted(frame: pd.DataFrame, name: str, dash: str):
+            xs, ys = [], []
+            for mdt in months24:
+                xs.append(mdt)
+                ys.append(weighted_percentage(frame[frame["month_dt"] == mdt]))
+            fig_line.add_scatter(
+                x=xs, y=ys, name=name, mode="lines",
+                line=dict(width=2, dash=dash, color=REG_LINE if dash == "dash" else NAT_LINE),
+                customdata=[[format_percent_display(y, metric)] for y in ys],
+                hovertemplate=HOVER_TMPL,
+            )
+        if region != "(All Regions)":
+            _add_weighted(dm[dm["region"] == region], f"{region} (weighted)", "dash")
+        _add_weighted(dm, "National (weighted)", "dot")
+
+        fig_line.update_xaxes(title=None, tickformat="%b-%y")
+
+    else:
+        dq = df[(df["domain"] == domain) & (df["metric"] == metric)].copy()
+        order = pd.Categorical(dq["quarter"], categories=pd.unique(dq["quarter"]), ordered=True)
+        dq["quarter"] = order
+        last8 = list(order.categories)[-8:]
+        dq8 = dq[dq["quarter"].isin(last8)]
+
+        for i, code in enumerate(selected_codes):
+            s = dq8[dq8["provider_code"] == code].copy()
+            if s.empty:
+                continue
+            s["PercentLabel"] = s.apply(lambda r: format_percent_display(r["percent"], r["metric"]), axis=1)
+            fig_line.add_scatter(
+                x=s["quarter"].astype(str), y=s["percent"],
+                mode="lines+markers",
+                name=short_label(code, s["provider_name"].iloc[0] if "provider_name" in s.columns else "", 3),
+                line=dict(width=3, color=colour_by_code.get(code, PALETTE[i % len(PALETTE)])),
+                marker=dict(size=6, line=dict(width=1, color="#FFFFFF")),
+                customdata=s[["PercentLabel"]].values,
+                hovertemplate=HOVER_TMPL,
+            )
+
+        def _add_weighted_q(frame: pd.DataFrame, name: str, dash: str):
+            xs, ys = [], []
+            for q in last8:
+                xs.append(str(q))
+                ys.append(weighted_percentage(frame[frame["quarter"] == q]))
+            fig_line.add_scatter(
+                x=xs, y=ys, name=name, mode="lines",
+                line=dict(width=2, dash=dash, color=REG_LINE if dash == "dash" else NAT_LINE),
+                customdata=[[format_percent_display(y, metric)] for y in ys],
+                hovertemplate=HOVER_TMPL,
+            )
+        if region != "(All Regions)":
+            _add_weighted_q(dq8[dq8["region"] == region], f"{region} (weighted)", "dash")
+        _add_weighted_q(dq8, "National (weighted)", "dot")
+
+        fig_line.update_xaxes(title=None)  # quarter labels
+
+    fig_line.update_layout(
+        template="plotly_white",
+        height=360,
+        margin=dict(l=10, r=10, t=6, b=0),   # small, to align with right panel
+        legend=dict(orientation="h", y=-0.15, x=-0.05),
+        hovermode="x unified",
+        showlegend=False,
+    )
+    fig_line.update_yaxes(ticksuffix="%", title=None)
+    st.plotly_chart(fig_line, use_container_width=True, config={"displaylogo": False})
+
+with right:
+    # ---- Title + provider tabs
+    st.markdown(
+        f"##### Metrics within domain — {html.escape(str(domain))} ({_freq_label})",
+        unsafe_allow_html=True
+    )
+
+    if selected_codes:
+        name_by_code = {r.provider_code: r.provider_name for _, r in labels_df.iterrows()}
+        tabs = st.tabs([short_label(c, name_by_code.get(c, ""), 2) for c in selected_codes])
+
+        for i, code in enumerate(selected_codes):
+            with tabs[i]:
+                tbl = df[(df[period_col]==period) & (df["domain"]==domain)]
+                if region != "(All Regions)":
+                    tbl = tbl[tbl["region"]==region]
+                tbl = tbl[tbl["provider_code"]==code][
+                    ["metric","percent","rank","rank_region","region_size","numerator","denominator"]
+                ].copy().sort_values("metric")
+
+                if tbl.empty:
+                    st.caption("No rows under current filters.")
+                else:
+                    # Build vertical progress-cards (matches Compare Providers)
+                    cards = []
+                    for _, r in tbl.iterrows():
+                        # % width for the meter (0–100), safe if CSV is 0–1 or 0–100
+                        pct = pd.to_numeric(r["percent"], errors="coerce")
+                        pct_val = 0.0 if pd.isna(pct) else float(np.clip(pct, 0.0, 100.0))
+
+                        title     = html.escape(str(r["metric"]))
+                        pct_label = format_percent_display(r["percent"], r["metric"])
+
+                        # National “X out of Y” for this metric (ignore Region)
+                        nat_total_m = df[
+                            (df[period_col] == period) &
+                            (df["domain"] == domain) &
+                            (df["metric"] == r["metric"])
+                        ]["provider_code"].nunique()
+                        rank_txt  = "—" if pd.isna(r["rank"]) else f"{int(r['rank'])}"
+                        nat_label = "—" if (rank_txt == "—" or not nat_total_m) else f"{rank_txt} out of {int(nat_total_m)}"
+
+                        # Regional “X out of Y”
+                        if pd.isna(r["rank_region"]) and pd.isna(r["region_size"]):
+                            reg_txt = "—"
+                        else:
+                            rr = "—" if pd.isna(r["rank_region"]) else f"{int(r['rank_region'])}"
+                            reg_txt = rr if pd.isna(r["region_size"]) else f"{rr} out of {int(r['region_size'])}"
+
+                        card_html = dedent(f"""
+                        <div class="progress-card">
+                        <div class="progress-head">
+                            <div class="progress-name">{title}</div>
+                            <div class="progress-percent">{pct_label}</div>
+                        </div>
+                        <div class="progress-track"><div class="progress-fill" style="width:{pct_val:.2f}%;"></div></div>
+                        <div class="progress-caption">
+                            <span>{nat_label}</span>
+                            <span class="muted">Regional Rank: {reg_txt}</span>
+                        </div>
+                        </div>
+                        """).strip()
+
+                        cards.append(card_html)
+
+                    panel_html = dedent("""
+                    <div class="metrics-panel cards-plain">
+                    <div class="progress-list">{cards}</div>
+                    </div>
+                    """).format(cards="".join(cards)).strip()
+
+                    st.markdown(panel_html, unsafe_allow_html=True)
+
+    else:
+        st.caption("Select providers in the sidebar to view per-provider metrics.")
+

@@ -640,6 +640,7 @@ if mode == "Monthly":
 
     # Region
     scope0  = df_scoped[(df_scoped["Domain"] == domain) & (df_scoped["Metric"] == metric)].copy()
+    nat_total = scope0["Provider_Code"].nunique()
     regions = ["(All Regions)"] + sorted(scope0["Region"].dropna().unique().tolist())
     region_choice = st.sidebar.selectbox(
         "Region", regions, 
@@ -651,7 +652,7 @@ if mode == "Monthly":
     scope = scope0 if region_selected is None else scope0[scope0["Region"] == region_selected]
     
     # Domain-wide rows (for the right-hand cards) — NOT filtered by metric
-    domain_rows0 = df_scoped[df_scoped["Domain"] == domain].copy()
+    domain_rows0 = df_scoped[df_scoped["Domain"] == domain].copy()  # unfiltered by region
     domain_rows_cards = domain_rows0 if region_selected is None else domain_rows0[domain_rows0["Region"] == region_selected]
     
     labels = provider_labels(scope)
@@ -721,6 +722,8 @@ else:
 
     # Region
     scope0  = df_scoped[(df_scoped["Domain"] == domain) & (df_scoped["Metric"] == metric)].copy()
+    nat_total = scope0["Provider_Code"].nunique()
+
     regions = ["(All Regions)"] + sorted(scope0["Region"].dropna().unique().tolist())
     region_choice = st.sidebar.selectbox(
         "Region", regions, 
@@ -828,8 +831,10 @@ def render_provider_kpis(
     label_html: str,
     metric_name: str,
     heading_color: str = "#111827",
-    region_line: str | None = None
+    region_line: str | None = None,
+    nat_total: int | None = None
 ):
+
     if not provider_code:
         st.info(f"Pick **{label_html.split(':',1)[0]}** in the sidebar.")
         return
@@ -840,6 +845,7 @@ def render_provider_kpis(
         return
 
     rr, rreg, pct, num, den = vals
+    overall_html = rr if (rr == "—" or not nat_total) else f"{rr}<span class='muted'> / {int(nat_total)}</span>"
     region_html = f"<div class='prov-kpi-sub'>{html.escape(region_line)}</div>" if region_line else "<div class='prov-kpi-sub'>&nbsp;</div>"
     html_block = f"""
     <div class="prov-block">
@@ -848,7 +854,7 @@ def render_provider_kpis(
         {region_html}
       </div>
       <div class="kpi-grid">
-        {kpi_card_html("Overall Rank", rr)}
+        {kpi_card_html("Overall Rank", overall_html)}
         {kpi_card_html("Region Rank",  rreg)}
         {kpi_card_html("% Value",      pct)}
         {kpi_card_html("Numerator",    num)}
@@ -871,10 +877,10 @@ regionB = get_region_for_provider(provB, scope0)
 
 colA, colB = st.columns(2, gap="large")
 with colA:
-    render_provider_kpis(scope, provA, titleA, metric, A_COLOR, regionA)
-with colB:
-    render_provider_kpis(scope, provB, titleB, metric, B_COLOR, regionB)
+    render_provider_kpis(scope, provA, titleA, metric, A_COLOR, regionA, nat_total)
 
+with colB:
+    render_provider_kpis(scope, provB, titleB, metric, B_COLOR, regionB, nat_total)
 
 st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
 
@@ -938,7 +944,16 @@ st.plotly_chart(pxfig, use_container_width=True)
 # AFTER (adds space above the line and a tiny space below)
 st.markdown("<hr class='chart-separator cmp-sep'>", unsafe_allow_html=True)
 
-def render_progress_cards(all_rows: pd.DataFrame, provider_code: str | None, panel_title: str, only_metric: str | None = None):
+def render_progress_cards(
+    all_rows: pd.DataFrame,
+    provider_code: str | None,
+    panel_title: str,
+    only_metric: str | None = None,
+    nat_frame: pd.DataFrame | None = None,   # << new
+):
+    if nat_frame is None:
+        nat_frame = all_rows  # fallback if caller doesn't supply one
+        
     if not provider_code:
         st.markdown(
             '<div class="metrics-panel cards-plain">'
@@ -973,7 +988,11 @@ def render_progress_cards(all_rows: pd.DataFrame, provider_code: str | None, pan
                 pct_val = float(rr["Percent"])
 
         width = max(0.0, min(100.0, pct_val))
-        nat_label = f"{rank_txt} (Nat.)" if rank_txt != "—" else "—"
+        # national provider count for THIS metric (ignore region)
+        nat_n_metric = nat_frame[nat_frame["Metric"] == m]["Provider_Code"].nunique()
+
+        # captions
+        nat_label = "—" if (rank_txt == "—" or nat_n_metric == 0) else f"{rank_txt} out of {int(nat_n_metric)}"
         reg_label = f"Regional Rank: {reg_txt}" if reg_txt != "—" else "Regional Rank: —"
 
         cards.append(
@@ -1093,12 +1112,16 @@ with left:
 
 
 with right:
-    # st.markdown("#### Metrics within domain (side-by-side)")
     tabA, tabB = st.tabs(["Provider A", "Provider B"])
     with tabA:
-        render_progress_cards(domain_rows_cards, provA, f"Metrics within domain — {provA}-{region_selected} ({mode})")
+        render_progress_cards(domain_rows_cards, provA,
+            f"Metrics within domain — {provA}-{region_selected} ({mode})",
+            nat_frame=domain_rows0)
     with tabB:
-        render_progress_cards(domain_rows_cards, provB, f"Metrics within domain — {provB}-{region_selected} ({mode})")
+        render_progress_cards(domain_rows_cards, provB,
+            f"Metrics within domain — {provB}-{region_selected} ({mode})",
+            nat_frame=domain_rows0)
+
 
 # ===================== Dynamic Summary Section =====================
 # st.markdown("<hr class='chart-separator'>", unsafe_allow_html=True)

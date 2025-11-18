@@ -140,6 +140,18 @@ def format_region_rank(rank_val, size_val) -> str:
         return "—"
     return f"{int(rank_val)} out of {int(size_val)}"
 
+def format_overall_rank_text(rank_val, nat_total) -> str:
+    """Plain text 'X out of Y' or '—' if missing."""
+    if pd.isna(rank_val) or not nat_total:
+        return "—"
+    return f"{int(rank_val)} out of {int(nat_total)}"
+
+def format_overall_rank_html(rank_val, nat_total) -> str:
+    import pandas as pd
+    if pd.isna(rank_val) or not nat_total:
+        return "—"
+    return f"{int(rank_val)}<span class='muted'> out of {int(nat_total)}</span>"
+
 
 @st.cache_data(show_spinner=False)
 def load_monthly_csv(file_bytes: bytes) -> pd.DataFrame:
@@ -352,6 +364,7 @@ def render_empty_state(page_name: str, template_cols: list[str], demo_rel_path: 
 
     st.markdown("</div>", unsafe_allow_html=True)  # close .info-row.empty-grid
 
+
 # ------------------------ End of def -----------------------------
 
 # ------------------------- Sidebar upload -------------------------
@@ -557,13 +570,19 @@ if provider_code:
         d_den,   cls_den   = delta_display(den_val,      den_prev,      higher_is_better=None)
         d_pct,   cls_pct   = delta_display(pct_val,      pct_prev,      higher_is_better=True)
 
+        # -------- Overall Rank as "X out of Y" --------
+        nat_n = df_mdm["Provider_Code"].nunique()  # Month+Domain+Metric national total
+        overall_html = format_overall_rank_html(r["Rank"], nat_n)
+
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
-            kpi_card("Overall Rank", ("—" if pd.isna(rank_val) else f"{int(rank_val)}"), d_rank, cls_rank)
+            kpi_card("Overall Rank", overall_html, d_rank, cls_rank)
+
         with c2:
             label = ("—" if pd.isna(rank_reg_val) else f"{int(rank_reg_val)}")
             tail  = ("" if pd.isna(region_size) else f"<span class='muted'> out of {int(region_size)}</span>")
             kpi_card("Region Rank", f"{label}{tail}", d_rankr, cls_rankr)
+
         with c3:
             kpi_card("Numerator", ("—" if pd.isna(num_val) else f"{int(num_val):,}"), d_num, cls_num)
         with c4:
@@ -687,7 +706,10 @@ with right:
 
             # width for the bar (safeguard 0–100)
             width = max(0.0, min(100.0, pct_val))
-            nat_label = f"{rank_txt} (Nat.)" if rank_txt != "—" else "—"
+            # "X out of Y" per metric (national denominator for that metric)
+            nat_n_metric = scope[scope["Metric"] == m]["Provider_Code"].nunique()
+            nat_label = format_overall_rank_text(rr["Rank"] if not r.empty else pd.NA, nat_n_metric)
+
             reg_label = f"Regional Rank: {reg_txt}" if reg_txt != "—" else "Regional Rank: —"
 
             card_html = (
