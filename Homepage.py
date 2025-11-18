@@ -17,7 +17,7 @@ st.set_page_config(
 # --- App meta (edit these) ---
 DEV_NAME    = "David M. Oladoyin"
 DEV_EMAIL   = "david.oladoyin@nhs.net"
-APP_VERSION = "6.2"
+APP_VERSION = "7.0"
 
 # ---------- Assets ----------
 ROOT_ASSETS  = Path(__file__).parents[1] / "assets"
@@ -238,6 +238,134 @@ def _inject_css():
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 _inject_css()
+
+# ==== Dialog look & feel overrides (Material-ish) ====
+_DIALOG_CSS = """
+/* Center the dialog vertically & horizontally */
+[data-testid="stDialog"]{
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  /* overlay look */
+  background: rgba(17,24,39,.35) !important;
+
+  /* 🔴 remove any border/outline and rounding on the dark background */
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+
+/* Panel decoration */
+[data-testid="stDialog"] > div{
+  border-radius: 12px !important;     /* ⬅ smaller corners */
+  border: 1px solid #E5E7EB !important;
+  box-shadow: 0 12px 32px rgba(0,0,0,.18),
+              0 6px 14px rgba(0,0,0,.10) !important;
+}
+
+/* Title weight/spacing */
+[data-testid="stDialog"] h1, 
+[data-testid="stDialog"] h2 {
+  letter-spacing: .2px;
+}
+
+/* Close button — no border, red hover, accessible focus ring */
+[data-testid="stDialog"] [aria-label="Close"]{
+  border: none !important;              /* ← remove border */
+  border-radius: 10px !important;
+  padding: 2px 6px !important;
+  background: transparent !important;
+  transition: background .15s ease;
+}
+
+[data-testid="stDialog"] [aria-label="Close"]:hover{
+  background: rgba(239,68,68,.5) !important;  /* red @ 50% */
+  color: #fff !important;
+}
+
+[data-testid="stDialog"] [aria-label="Close"]:focus,
+[data-testid="stDialog"] [aria-label="Close"]:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(239,68,68,.35) !important;  /* subtle focus ring */
+  border: none !important;                                /* ensure no border */
+}
+
+[data-testid="stDialog"] [aria-label="Close"]:hover{
+  background: rgba(239, 68, 68, .5) !important;  /* red-500 @ 50% */
+  color: #FFFFFF !important;
+}
+
+/* Inside the dialog, make buttons compact (override your global big buttons) */
+[data-testid="stDialog"] .stButton > button{
+  width: auto !important;                 /* not full-width */
+  padding: 10px 16px !important;          /* smaller */
+  border-radius: 12px !important;
+  font-size: 16px !important;
+  line-height: 1.2 !important;
+  box-shadow: 0 3px 8px rgba(0,0,0,.10) !important;
+  transform: none !important;             /* cancel global hover lift */
+}
+[data-testid="stDialog"] .stButton > button:hover{
+  transform: none !important;
+}
+/* Padding for the dialog body */
+.welcome-body{
+  padding-left: 14px;   /* ⬅ adds left padding to the text block */
+}
+
+
+/* keep your red-hover */
+[data-testid="stDialog"] [aria-label="Close"]:hover{
+  background: rgba(239,68,68,.5) !important;  /* red @ 50% */
+  color:#fff !important;
+  border-color: rgba(239,68,68,.6) !important;
+}
+
+/* remove default blue ring and give a rounded focus ring that follows the radius */
+[data-testid="stDialog"] [aria-label="Close"]:focus,
+[data-testid="stDialog"] [aria-label="Close"]:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,.35) !important;  /* blue focus ring */
+  border-radius: 10px !important;                          /* same radius */
+}
+
+"""
+st.markdown(f"<style>{_DIALOG_CSS}</style>", unsafe_allow_html=True)
+
+# ==== One-time welcome popup (first visit only) ==============================
+# Show once per browser session; close via ✕ or button (outside click also dismisses).
+st.session_state.setdefault("welcome_seen_v62", False)
+
+@st.dialog("Welcome to the NOF Rankings App")
+def _welcome_popup():
+    st.markdown(
+        """
+<div class="welcome-body">
+  <p><strong>What you can do here</strong></p>
+  <ul>
+    <li>Upload <strong>Monthly</strong> or <strong>Quarterly</strong> CSVs from the left sidebar.</li>
+    <li>Explore <strong>Monthly</strong> and <strong>Quarterly</strong> rankings with KPIs &amp; distributions.</li>
+    <li>Use <strong>Compare Providers</strong> for side-by-side analysis.</li>
+    <li>Set a <strong>default provider</strong> that syncs across pages.</li>
+    <li>See trends with <strong>regional (dashed)</strong> and <strong>national (dotted)</strong> weighted averages.</li>
+    <li>Visit the <strong>Foundation Group</strong> page to <em>stack multiple providers</em>, view distribution &amp; trend together, and scan domain cards in one place.</li>
+  </ul>
+</div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Open the dialog exactly once per session
+if not st.session_state["welcome_seen_v62"]:
+    st.session_state["welcome_seen_v62"] = True   # mark as shown for this session
+    _welcome_popup()
+    
+# ============================================================================
 
 # ---------- Helpers ----------
 def _ordinal(n: int) -> str:
