@@ -1115,11 +1115,11 @@ with right:
     tabA, tabB = st.tabs(["Provider A", "Provider B"])
     with tabA:
         render_progress_cards(domain_rows_cards, provA,
-            f"Metrics within domain — {provA}-{region_selected} ({mode})",
+            f"Metrics within domain — {provA} ({mode})",
             nat_frame=domain_rows0)
     with tabB:
         render_progress_cards(domain_rows_cards, provB,
-            f"Metrics within domain — {provB}-{region_selected} ({mode})",
+            f"Metrics within domain — {provB} ({mode})",
             nat_frame=domain_rows0)
 
 
