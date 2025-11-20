@@ -630,7 +630,7 @@ fig.update_traces(
 )
 
 fig.update_layout(
-    template="simple_white", height=420, margin=dict(l=10,r=10,t=50,b=10),
+    template="simple_white", height=410, margin=dict(l=10,r=10,t=50,b=10),
     xaxis_title="Providers", xaxis_showticklabels=False,
     yaxis_title=None, yaxis_range=[0,None], yaxis_ticksuffix="%",
     bargap=0.15, title=dict(x=0)
@@ -780,7 +780,7 @@ with left:
         legend=dict(orientation="h", y=-0.19, yanchor="top", x=-0.03, xanchor="left", xref="paper"),
         hovermode="x unified",
         template="plotly_white",  # Simple clean template
-        height=350
+        height=320
     )
 
     fig_trend.update_yaxes(
@@ -795,8 +795,8 @@ with left:
         ticktext=trend["Month_lbl"], 
         title_text=None
     )
-
-    
+    TREND_H = 450
+    fig_trend.update_layout(autosize=False, height=TREND_H)
     st.plotly_chart(fig_trend, use_container_width=True)
 
 with right:

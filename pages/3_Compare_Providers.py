@@ -1101,11 +1101,14 @@ with left:
 
     fig.update_layout(
         template="plotly_white",
-        height=360,
+        height=320,
         margin=dict(l=10, r=10, t=6, b=0),       # small top margin; title is outside
         legend=dict(orientation="h", y=-0.15, x=-0.05),
         hovermode="x unified"
     )
+    TREND_H = 450
+    
+    fig.update_layout(autosize=False, height=TREND_H)
     fig.update_yaxes(ticksuffix="%", title=None)
     fig.update_xaxes(title=None)
     st.plotly_chart(fig, use_container_width=True)

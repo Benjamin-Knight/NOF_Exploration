@@ -1001,7 +1001,7 @@ if provider_code:
 # small spacer before the chart + RHS panel
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
 
-# ===================== Chart (left) + RHS panel (right) =======
+# ===================== Distribution Chart ===============================
 
 # Chart data (Region applied; Provider does NOT filter the set)
 chart_df = df_qdmr.copy()
@@ -1026,7 +1026,9 @@ fig.update_xaxes(
     ticks="",           # no tick marks
     mirror=False
 )
-
+TREND_H = 450
+    
+fig.update_layout(height=TREND_H)
 st.plotly_chart(fig, use_container_width=True)
 # Add a thin separator line above the chart
 st.markdown('<hr class="chart-separator">', unsafe_allow_html=True)

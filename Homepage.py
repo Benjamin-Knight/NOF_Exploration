@@ -17,7 +17,7 @@ st.set_page_config(
 # --- App meta (edit these) ---
 DEV_NAME    = "David M. Oladoyin"
 DEV_EMAIL   = "david.oladoyin@nhs.net"
-APP_VERSION = "7.2"
+APP_VERSION = "7.3"
 
 # ---------- Assets ----------
 ROOT_ASSETS  = Path(__file__).parents[1] / "assets"
