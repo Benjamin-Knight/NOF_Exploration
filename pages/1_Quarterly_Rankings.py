@@ -1002,43 +1002,38 @@ if provider_code:
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
 
 # ===================== Chart (left) + RHS panel (right) =======
-left, right = st.columns([0.75, 0.25], gap="medium")
 
-with left:
-    # Chart data (Region applied; Provider does NOT filter the set)
-    chart_df = df_qdmr.copy()
-    chart_df_plot = chart_df.dropna(subset=["Percent", RANK], how="any").copy()
-    chart_df_plot = chart_df_plot.sort_values([RANK, "Percent", PROV_NAME], ascending=[True, False, True])
-    chart_df_plot["Is_Selected"] = (chart_df_plot[PROV_CODE].eq(provider_code) if provider_code else False)
-    chart_df_plot["PercentLabel"] = chart_df_plot.apply(lambda r: format_percent_display(r["Percent"], r[METRIC]), axis=1)
+# Chart data (Region applied; Provider does NOT filter the set)
+chart_df = df_qdmr.copy()
+chart_df_plot = chart_df.dropna(subset=["Percent", RANK], how="any").copy()
+chart_df_plot = chart_df_plot.sort_values([RANK, "Percent", PROV_NAME], ascending=[True, False, True])
+chart_df_plot["Is_Selected"] = (chart_df_plot[PROV_CODE].eq(provider_code) if provider_code else False)
+chart_df_plot["PercentLabel"] = chart_df_plot.apply(lambda r: format_percent_display(r["Percent"], r[METRIC]), axis=1)
 
-    if chart_df_plot.empty:
-        total = len(chart_df); missing_pct = chart_df["Percent"].isna().sum(); missing_rank = chart_df[RANK].isna().sum()
-        st.warning(f"No bars to draw. Rows: {total:,} · missing Percent: {missing_pct:,} · missing Rank: {missing_rank:,}")
+if chart_df_plot.empty:
+    total = len(chart_df); missing_pct = chart_df["Percent"].isna().sum(); missing_rank = chart_df[RANK].isna().sum()
+    st.warning(f"No bars to draw. Rows: {total:,} · missing Percent: {missing_pct:,} · missing Rank: {missing_rank:,}")
 
-    chart_title = "Provider Performance (% Value) — ordered by Rank (1 at left)"
-    fig = build_chart_plotly(chart_df_plot, chart_title)
-    # Remove the bottom x-axis line (and any grid/zero line)
-    fig.update_xaxes(
-        showline=False,     # turn off the axis baseline
-        linewidth=0,        # belt-and-braces
-        linecolor="rgba(0,0,0,0)",
-        showgrid=False,
-        zeroline=False,
-        ticks="",           # no tick marks
-        mirror=False
-    )
+chart_title = "Provider Performance (% Value) — ordered by Rank (1 at left)"
+fig = build_chart_plotly(chart_df_plot, chart_title)
+# Remove the bottom x-axis line (and any grid/zero line)
+fig.update_xaxes(
+    showline=False,     # turn off the axis baseline
+    linewidth=0,        # belt-and-braces
+    linecolor="rgba(0,0,0,0)",
+    showgrid=False,
+    zeroline=False,
+    ticks="",           # no tick marks
+    mirror=False
+)
 
-    st.plotly_chart(fig, use_container_width=True)
-
-with right:
-    st.markdown('<div class="rhs-sticky">', unsafe_allow_html=True)
-    render_metric_rank_panel(df, provider_code, quarter, domain, panel_title=RHS_PANEL_TITLE)
-    st.markdown('</div>', unsafe_allow_html=True)
+st.plotly_chart(fig, use_container_width=True)
+# Add a thin separator line above the chart
+st.markdown('<hr class="chart-separator">', unsafe_allow_html=True)
 
 # -------- Trend + Summary row (keeps your earlier logic) --------
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
-t_left, t_right = st.columns([0.62, 0.38], gap="medium")
+t_left, t_right = st.columns([0.60, 0.40], gap="medium")
 
 with t_left:
     region_for_compare = resolve_region_for_compare(df, domain, metric, provider_code, region_selected)
@@ -1119,14 +1114,19 @@ with t_left:
 
 
 with t_right:
-    st.markdown("<div class='summary-offset'>", unsafe_allow_html=True)
-    html_summary = make_summary_html(
-        df_qdmr if provider_code else df,
-        df, provider_code, quarter, domain, metric, region_selected
-    )
-    st.markdown(html_summary, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="rhs-sticky">', unsafe_allow_html=True)
+    render_metric_rank_panel(df, provider_code, quarter, domain, panel_title=RHS_PANEL_TITLE)
+    st.markdown('</div>', unsafe_allow_html=True)
 
+
+st.markdown("<div class='summary-offset'>", unsafe_allow_html=True)
+html_summary = make_summary_html(
+    df_qdmr if provider_code else df,
+    df, provider_code, quarter, domain, metric, region_selected
+)
+st.markdown(html_summary, unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
 
 # ===================== Table (full width) =====================
 with st.expander("See filtered data as a table and download"):

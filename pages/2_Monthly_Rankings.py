@@ -596,62 +596,208 @@ if provider_code:
 
 st.markdown('<div class="vgap-3"></div>', unsafe_allow_html=True)
 
-# --------------- Charts (left) + Metrics panel (right) -----------
-left, right = st.columns([0.75, 0.25], gap="medium")
+# 1) Bar chart by Overall Rank (Region narrows; Provider does NOT filter)
+bars_df = df_mdm if region_selected is None else df_mdm[df_mdm["Region"] == region_selected]
+bars_df = bars_df.dropna(subset=["Percent","Rank"])
+bars_df = bars_df.sort_values(["Rank","Percent","Provider_Name"], ascending=[True, False, True]).copy()
+bars_df["Is_Selected"] = bars_df["Provider_Code"].eq(provider_code) if provider_code else False
+
+# Pre-format labels to match Quarterly’s hover
+bars_df["PercentLabel"]     = bars_df.apply(lambda r: format_percent_display(r["Percent"], r["Metric"]), axis=1)
+bars_df["NumLabel"]         = bars_df["Numerator"].map(format_whole_round)
+bars_df["DenLabel"]         = bars_df["Denominator"].map(format_whole_round)
+bars_df["RegionRankLabel"]  = bars_df.apply(lambda r: format_region_rank(r["Rank_Region"], r["Region_Size"]), axis=1)
+
+bars_df = bars_df.drop_duplicates(subset=["Provider_Code"])
+
+fig = px.bar(bars_df, x="Provider_Code", y="Percent", title="Provider Performance (% Value) — ordered by Rank (1 at left)")
+fig.update_traces(
+    marker_color=bars_df["Is_Selected"].map({True: NHS_YELLOW, False: BAR_GREY}),
+    customdata=bars_df[[
+        "Provider_Code", "Provider_Name", "Region",
+        "NumLabel", "DenLabel", "PercentLabel",
+        "Rank", "RegionRankLabel"
+    ]].values,
+    hovertemplate=(
+        "<b>%{customdata[0]}</b> — %{customdata[1]}<br>"
+        "Region: %{customdata[2]}<br>"
+        "Numerator: %{customdata[3]}<br>"
+        "Denominator: %{customdata[4]}<br>"
+        "% Value: %{customdata[5]}<br>"
+        "Rank: %{customdata[6]}<br>"
+        "Region rank: %{customdata[7]}<extra></extra>"
+    ),
+)
+
+fig.update_layout(
+    template="simple_white", height=420, margin=dict(l=10,r=10,t=50,b=10),
+    xaxis_title="Providers", xaxis_showticklabels=False,
+    yaxis_title=None, yaxis_range=[0,None], yaxis_ticksuffix="%",
+    bargap=0.15, title=dict(x=0)
+)
+
+# Remove the bottom x-axis line (and any grid/zero line)
+fig.update_xaxes(
+    showline=False,     # turn off the axis baseline
+    linewidth=0,        # belt-and-braces
+    linecolor="rgba(0,0,0,0)",
+    showgrid=False,
+    zeroline=False,
+    ticks="",           # no tick marks
+    mirror=False
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Add a thin separator line above the chart
+st.markdown('<hr class="chart-separator">', unsafe_allow_html=True)
+
+# ===================== Trend (left) + Metrics panel (right) =====================
+# st.markdown("<hr class='chart-separator cmp-sep'>", unsafe_allow_html=True)
+
+left, right = st.columns([0.60, 0.40], gap="medium")   # trend wider, cards narrower
 
 with left:
-    # 1) Bar chart by Overall Rank (Region narrows; Provider does NOT filter)
-    bars_df = df_mdm if region_selected is None else df_mdm[df_mdm["Region"] == region_selected]
-    bars_df = bars_df.dropna(subset=["Percent","Rank"])
-    bars_df = bars_df.sort_values(["Rank","Percent","Provider_Name"], ascending=[True, False, True]).copy()
-    bars_df["Is_Selected"] = bars_df["Provider_Code"].eq(provider_code) if provider_code else False
-    
-    # Pre-format labels to match Quarterly’s hover
-    bars_df["PercentLabel"]     = bars_df.apply(lambda r: format_percent_display(r["Percent"], r["Metric"]), axis=1)
-    bars_df["NumLabel"]         = bars_df["Numerator"].map(format_whole_round)
-    bars_df["DenLabel"]         = bars_df["Denominator"].map(format_whole_round)
-    bars_df["RegionRankLabel"]  = bars_df.apply(lambda r: format_region_rank(r["Rank_Region"], r["Region_Size"]), axis=1)
+    # 2) 24-month trend that IGNORES the Month slicer
+    # Always use the full Domain+Metric slice (not month-filtered)
+    domain_metric = df[(df["Domain"] == domain) & (df["Metric"] == metric)].copy()
 
-    bars_df = bars_df.drop_duplicates(subset=["Provider_Code"])
+    # If Month_dt isn't datetime yet, make it so (safe no-op if already dt)
+    if not pd.api.types.is_datetime64_any_dtype(domain_metric["Month_dt"]):
+        domain_metric["Month_dt"] = pd.to_datetime(domain_metric["Month_dt"])
 
-    fig = px.bar(bars_df, x="Provider_Code", y="Percent", title="Provider Performance (% Value) — ordered by Rank (1 at left)")
-    fig.update_traces(
-        marker_color=bars_df["Is_Selected"].map({True: NHS_YELLOW, False: BAR_GREY}),
-        customdata=bars_df[[
-            "Provider_Code", "Provider_Name", "Region",
-            "NumLabel", "DenLabel", "PercentLabel",
-            "Rank", "RegionRankLabel"
-        ]].values,
-        hovertemplate=(
-            "<b>%{customdata[0]}</b> — %{customdata[1]}<br>"
-            "Region: %{customdata[2]}<br>"
-            "Numerator: %{customdata[3]}<br>"
-            "Denominator: %{customdata[4]}<br>"
-            "% Value: %{customdata[5]}<br>"
-            "Rank: %{customdata[6]}<br>"
-            "Region rank: %{customdata[7]}<extra></extra>"
+    # Decide which region line to show (avoid month-filtered frames here):
+    # - If user picked a Region, use it
+    # - Else, if a provider is selected, use that provider's *most recent* Region
+    # - Else, no region line
+    if region_selected and region_selected != "(All Regions)":
+        region_for_compare = region_selected
+    elif provider_code:
+        prov_rows = domain_metric.loc[domain_metric["Provider_Code"] == provider_code]
+        if not prov_rows.empty:
+            # use the region from the provider's most recent record in this Domain+Metric
+            region_for_compare = prov_rows.sort_values("Month_dt")["Region"].iloc[-1]
+        else:
+            region_for_compare = None
+    else:
+        region_for_compare = None
+
+    # Always pick the last 24 unique months up to the *latest* month in the data
+    latest_dt = domain_metric["Month_dt"].max()
+    uniq_months = (
+        domain_metric[["Month_dt"]]
+        .drop_duplicates()
+        .sort_values("Month_dt")["Month_dt"]
+    )
+
+    months_sorted = uniq_months[uniq_months <= latest_dt].tail(24).tolist()
+
+    # Build series for Provider, Region weighted, National weighted
+    trend_rows = []
+    for mdt in months_sorted:
+        scope = domain_metric[domain_metric["Month_dt"] == mdt]
+
+        # Provider % for this month (if selected)
+        if provider_code:
+            p = scope.loc[scope["Provider_Code"] == provider_code, "Percent"]
+            prov = float(p.iloc[0]) if len(p) else np.nan
+        else:
+            prov = np.nan
+
+        # Region weighted % from counts
+        if region_for_compare:
+            reg = weighted_percentage(scope[scope["Region"] == region_for_compare])
+        else:
+            reg = np.nan
+
+        # National weighted % from counts
+        nat = weighted_percentage(scope)
+
+        trend_rows.append({
+            "Month_dt": mdt,
+            "Provider": prov,
+            "Region weighted": reg,
+            "National weighted": nat,
+        })
+
+    trend = pd.DataFrame(trend_rows)
+    trend["Month_lbl"] = trend["Month_dt"].dt.strftime("%b-%y")
+
+    # NEW: 1dp labels for hover (keep 2dp rule only if you ever need it later)
+    fmt = lambda v: ("—" if pd.isna(v) else f"{v:.1f}%")
+    trend["ProvLbl"] = trend["Provider"].map(fmt)
+    trend["RegLbl"]  = trend["Region weighted"].map(fmt)
+    trend["NatLbl"]  = trend["National weighted"].map(fmt)
+
+
+    trace_kwargs = dict(mode="lines+markers", cliponaxis=False)
+
+    fig_trend = go.Figure()
+
+    # Provider — solid blue (same as Quarterly)
+    if trend["Provider"].notna().any():
+        fig_trend.add_trace(go.Scatter(
+            x=trend["Month_dt"], y=trend["Provider"],
+            name=(provider_code or "Provider"),
+            line=dict(width=3, color="#327AD1"),
+            customdata=trend["ProvLbl"],
+            hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+            **trace_kwargs
+        ))
+
+    # Region (weighted) — dashed grey
+    if trend["Region weighted"].notna().any():
+        fig_trend.add_trace(go.Scatter(
+            x=trend["Month_dt"], y=trend["Region weighted"],
+            name=f"{region_for_compare or 'Region'} (weighted)",
+            line=dict(width=2, dash="dash", color="#6B7280"),
+            customdata=trend["RegLbl"],
+            hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+            **trace_kwargs
+        ))
+
+    # National (weighted) — dotted teal
+    if trend["National weighted"].notna().any():
+        fig_trend.add_trace(go.Scatter(
+            x=trend["Month_dt"], y=trend["National weighted"],
+            name="National (weighted)",
+            line=dict(width=2, dash="dot", color="#0C988F"),
+            customdata=trend["NatLbl"],
+            hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
+            **trace_kwargs
+        ))
+
+
+    window_end = latest_dt.strftime("%b-%y") if pd.notnull(latest_dt) else ""
+    months_n = len(trend)
+
+    fig_trend.update_layout(
+        title=dict(
+            text=f"{(provider_code or '').strip()} % Value trend (last {months_n} months, to {window_end})".strip(),
+            x=0, xanchor="left"
         ),
+        margin=dict(t=56, r=10, l=10, b=0),  # Reduced bottom margin
+        legend=dict(orientation="h", y=-0.19, yanchor="top", x=-0.03, xanchor="left", xref="paper"),
+        hovermode="x unified",
+        template="plotly_white",  # Simple clean template
+        height=350
     )
 
-    fig.update_layout(
-        template="simple_white", height=420, margin=dict(l=10,r=10,t=50,b=10),
-        xaxis_title="Providers", xaxis_showticklabels=False,
-        yaxis_title=None, yaxis_range=[0,None], yaxis_ticksuffix="%",
-        bargap=0.15, title=dict(x=0)
+    fig_trend.update_yaxes(
+        autorange=True, 
+        ticksuffix="%", 
+        title_text=None, 
+        automargin=True
     )
+
+    fig_trend.update_xaxes(
+        tickvals=trend["Month_dt"], 
+        ticktext=trend["Month_lbl"], 
+        title_text=None
+    )
+
     
-    # Remove the bottom x-axis line (and any grid/zero line)
-    fig.update_xaxes(
-        showline=False,     # turn off the axis baseline
-        linewidth=0,        # belt-and-braces
-        linecolor="rgba(0,0,0,0)",
-        showgrid=False,
-        zeroline=False,
-        ticks="",           # no tick marks
-        mirror=False
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_trend, use_container_width=True)
 
 with right:
     st.markdown('<div class="rhs-sticky">', unsafe_allow_html=True)
@@ -737,148 +883,8 @@ with right:
         st.markdown(panel_html, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)  # close .rhs-sticky
 
-
-# 2) 24-month trend that IGNORES the Month slicer
-# Always use the full Domain+Metric slice (not month-filtered)
-domain_metric = df[(df["Domain"] == domain) & (df["Metric"] == metric)].copy()
-
-# If Month_dt isn't datetime yet, make it so (safe no-op if already dt)
-if not pd.api.types.is_datetime64_any_dtype(domain_metric["Month_dt"]):
-    domain_metric["Month_dt"] = pd.to_datetime(domain_metric["Month_dt"])
-
-# Decide which region line to show (avoid month-filtered frames here):
-# - If user picked a Region, use it
-# - Else, if a provider is selected, use that provider's *most recent* Region
-# - Else, no region line
-if region_selected and region_selected != "(All Regions)":
-    region_for_compare = region_selected
-elif provider_code:
-    prov_rows = domain_metric.loc[domain_metric["Provider_Code"] == provider_code]
-    if not prov_rows.empty:
-        # use the region from the provider's most recent record in this Domain+Metric
-        region_for_compare = prov_rows.sort_values("Month_dt")["Region"].iloc[-1]
-    else:
-        region_for_compare = None
-else:
-    region_for_compare = None
-
-# Always pick the last 24 unique months up to the *latest* month in the data
-latest_dt = domain_metric["Month_dt"].max()
-uniq_months = (
-    domain_metric[["Month_dt"]]
-    .drop_duplicates()
-    .sort_values("Month_dt")["Month_dt"]
-)
-
-months_sorted = uniq_months[uniq_months <= latest_dt].tail(24).tolist()
-
-# Build series for Provider, Region weighted, National weighted
-trend_rows = []
-for mdt in months_sorted:
-    scope = domain_metric[domain_metric["Month_dt"] == mdt]
-
-    # Provider % for this month (if selected)
-    if provider_code:
-        p = scope.loc[scope["Provider_Code"] == provider_code, "Percent"]
-        prov = float(p.iloc[0]) if len(p) else np.nan
-    else:
-        prov = np.nan
-
-    # Region weighted % from counts
-    if region_for_compare:
-        reg = weighted_percentage(scope[scope["Region"] == region_for_compare])
-    else:
-        reg = np.nan
-
-    # National weighted % from counts
-    nat = weighted_percentage(scope)
-
-    trend_rows.append({
-        "Month_dt": mdt,
-        "Provider": prov,
-        "Region weighted": reg,
-        "National weighted": nat,
-    })
-
-trend = pd.DataFrame(trend_rows)
-trend["Month_lbl"] = trend["Month_dt"].dt.strftime("%b-%y")
-
-# NEW: 1dp labels for hover (keep 2dp rule only if you ever need it later)
-fmt = lambda v: ("—" if pd.isna(v) else f"{v:.1f}%")
-trend["ProvLbl"] = trend["Provider"].map(fmt)
-trend["RegLbl"]  = trend["Region weighted"].map(fmt)
-trend["NatLbl"]  = trend["National weighted"].map(fmt)
-
-
-trace_kwargs = dict(mode="lines+markers", cliponaxis=False)
-
-fig_trend = go.Figure()
-
-# Provider — solid blue (same as Quarterly)
-if trend["Provider"].notna().any():
-    fig_trend.add_trace(go.Scatter(
-        x=trend["Month_dt"], y=trend["Provider"],
-        name=(provider_code or "Provider"),
-        line=dict(width=3, color="#327AD1"),
-        customdata=trend["ProvLbl"],
-        hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
-        **trace_kwargs
-    ))
-
-# Region (weighted) — dashed grey
-if trend["Region weighted"].notna().any():
-    fig_trend.add_trace(go.Scatter(
-        x=trend["Month_dt"], y=trend["Region weighted"],
-        name=f"{region_for_compare or 'Region'} (weighted)",
-        line=dict(width=2, dash="dash", color="#6B7280"),
-        customdata=trend["RegLbl"],
-        hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
-        **trace_kwargs
-    ))
-
-# National (weighted) — dotted teal
-if trend["National weighted"].notna().any():
-    fig_trend.add_trace(go.Scatter(
-        x=trend["Month_dt"], y=trend["National weighted"],
-        name="National (weighted)",
-        line=dict(width=2, dash="dot", color="#0C988F"),
-        customdata=trend["NatLbl"],
-        hovertemplate="<b>%{fullData.name}</b>: %{customdata}<extra></extra>",
-        **trace_kwargs
-    ))
-
-
-window_end = latest_dt.strftime("%b-%y") if pd.notnull(latest_dt) else ""
-months_n = len(trend)
-
-fig_trend.update_layout(
-    title=dict(
-        text=f"{(provider_code or '').strip()} % Value trend (last {months_n} months, to {window_end})".strip(),
-        x=0, xanchor="left"
-    ),
-    margin=dict(t=56, r=10, l=10, b=0),  # Reduced bottom margin
-    legend=dict(orientation="h", y=-0.19, yanchor="top", x=-0.03, xanchor="left", xref="paper"),
-    hovermode="x unified",
-    template="plotly_white",  # Simple clean template
-    height=350
-)
-
-fig_trend.update_yaxes(
-    autorange=True, 
-    ticksuffix="%", 
-    title_text=None, 
-    automargin=True
-)
-
-fig_trend.update_xaxes(
-    tickvals=trend["Month_dt"], 
-    ticktext=trend["Month_lbl"], 
-    title_text=None
-)
-
 # Add a thin separator line above the chart
 st.markdown('<hr class="chart-separator">', unsafe_allow_html=True)
-st.plotly_chart(fig_trend, use_container_width=True)
 
 
 # 3) Region vs National comparison (weighted)

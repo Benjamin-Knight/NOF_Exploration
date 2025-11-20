@@ -1020,7 +1020,7 @@ def render_progress_cards(
 # ===================== Trend (left) + Metrics panel (right) =====================
 # st.markdown("<hr class='chart-separator cmp-sep'>", unsafe_allow_html=True)
 
-left, right = st.columns([2.1, 1.9], gap="medium")   # trend wider, cards narrower
+left, right = st.columns([0.60, 0.40], gap="medium")   # trend wider, cards narrower
 
 with left:
     # ---- Title for the trend chart

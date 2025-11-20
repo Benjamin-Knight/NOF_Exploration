@@ -761,7 +761,7 @@ st.markdown("<div class='no-gap'><hr class='section-sep'></div>", unsafe_allow_h
 
 # === Trend (left) + Metrics within domain (right) ===
 
-left, right = st.columns([2.1, 1.9], gap="medium")  # match Compare Providers
+left, right = st.columns([0.58, 0.42], gap="small")  # match Compare Providers
 
 with left:
     # ---- Title for the trend chart (same wording as other pages)
