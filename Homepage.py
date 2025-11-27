@@ -4,6 +4,7 @@ from datetime import datetime
 import streamlit as st
 from io import BytesIO
 import pandas as pd
+import html
 
 # Always-on sharing
 st.session_state.setdefault("remember_filters", True)
@@ -630,8 +631,8 @@ footer_html = f"""
   <p>The NOF Rankings App turns performance data into clear comparisons across domains and providers.</p>
   <p>It helps you spot organizational change fast, focus effort, and prove improvement.</p>
   <div class="meta">
-    Developed by: {DEV_NAME} · v{APP_VERSION} ·
-    <a href="mailto:{DEV_EMAIL}?subject=NOF%20Rankings%20v{APP_VERSION}%20feedback">Email the developer</a>
+    Developed by: {html.escape(DEV_NAME)} · v{html.escape(APP_VERSION)} ·
+    <a href="mailto:{html.escape(DEV_EMAIL)}?subject=NOF%20Rankings%20v{html.escape(APP_VERSION)}%20feedback">Email the developer</a>
   </div>
 </div>
 """
