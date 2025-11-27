@@ -401,8 +401,12 @@ if "monthly_bytes" not in st.session_state:
 
 try:
     df = load_monthly_csv(st.session_state["monthly_bytes"])
+except (ValueError, KeyError) as e:
+    st.error(f"Data validation error: {e}")
+    st.stop()
 except Exception as e:
-    st.error(f"Could not read CSV: {e}")
+    # Log the full error e for debugging if a logging system is in place
+    st.error("An unexpected error occurred while processing the CSV file. Please ensure it is correctly formatted.")
     st.stop()
 
 # --------------------------- Filters ------------------------------

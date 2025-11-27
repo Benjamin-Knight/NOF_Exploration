@@ -813,10 +813,14 @@ if "quarterly_bytes" not in st.session_state:
 # ===================== Load Data ===============================
 # load_csv already expects a file-like object; wrap the bytes
 try:
-    import io  # (already imported at top in your file; harmless to re-import)
+    import io
     df = load_csv(io.BytesIO(st.session_state["quarterly_bytes"]))
+except (ValueError, KeyError) as e:
+    st.error(f"Data validation error: {e}")
+    st.stop()
 except Exception as e:
-    st.error(f"Failed to read CSV: {e}")
+    # Log the full error e for debugging if a logging system is in place
+    st.error("An unexpected error occurred while processing the CSV file. Please ensure it is correctly formatted.")
     st.stop()
 
 # 1) Quarter
