@@ -668,7 +668,7 @@ if has_rows:
         provider_text_colors = [colour_by_code.get(c, "#111827") for c in provider_codes]
 
         # BOLD provider names
-        provider_labels_bold = [f"<b>{v}</b>" for v in kpi_df["Provider"]]
+        provider_labels_bold = [f"<b>{html.escape(v)}</b>" for v in kpi_df["Provider"]]
 
         fig_kpi = go.Figure(data=[go.Table(
             columnwidth=[300, 100, 100, 100, 100, 100],
