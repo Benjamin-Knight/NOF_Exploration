@@ -4,3 +4,5 @@ primaryColor="#0F62FE"
 
 [server]
 headless = true
+enableXsrfProtection = false
+enableCORS = false

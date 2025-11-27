@@ -27,5 +27,5 @@
   "forwardPorts": [
     8501
   ],
-  "postAttachCommand": "streamlit run Homepage.py --server.enableCORS false --server.enableXsrfProtection false"
+  "postAttachCommand": "streamlit run Homepage.py"
 }
